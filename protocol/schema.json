@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tianyisama/status_tools/protocol/schema.json",
+  "title": "status_tools metrics payload",
+  "description": "Schema for the `data` field of `metrics` messages, plus top-level message envelopes. Fields that cannot be read on a platform MUST be null, never omitted.",
+  "$defs": {
+    "cpu": {
+      "type": "object",
+      "required": ["percent", "core_count"],
+      "properties": {
+        "percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "core_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "gpu": {
+      "type": "object",
+      "required": ["available", "percent", "memory_used_mb", "memory_total_mb", "temperature_c"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "percent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "memory_used_mb": { "type": ["integer", "null"], "minimum": 0 },
+        "memory_total_mb": { "type": ["integer", "null"], "minimum": 0 },
+        "temperature_c": { "type": ["number", "null"] }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "required": ["percent", "used_mb", "total_mb"],
+      "properties": {
+        "percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "used_mb": { "type": "integer", "minimum": 0 },
+        "total_mb": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "disk": {
+      "type": "object",
+      "required": ["percent", "used_gb", "total_gb"],
+      "properties": {
+        "percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "used_gb": { "type": "number", "minimum": 0 },
+        "total_gb": { "type": "number", "minimum": 0 }
+      }
+    },
+    "battery": {
+      "type": "object",
+      "required": ["present", "percent", "plugged", "status"],
+      "properties": {
+        "present": { "type": "boolean" },
+        "percent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "plugged": { "type": ["boolean", "null"] },
+        "status": { "type": "string", "enum": ["charging", "discharging", "full", "no_battery", "unknown"] }
+      }
+    }
+  },
+  "type": "object",
+  "required": ["type", "device_id", "timestamp", "data"],
+  "properties": {
+    "type": { "const": "metrics" },
+    "device_id": { "type": "string" },
+    "timestamp": { "type": "number" },
+    "data": {
+      "type": "object",
+      "required": ["cpu", "gpu", "memory", "disk", "battery"],
+      "properties": {
+        "cpu": { "$ref": "#/$defs/cpu" },
+        "gpu": { "$ref": "#/$defs/gpu" },
+        "memory": { "$ref": "#/$defs/memory" },
+        "disk": { "$ref": "#/$defs/disk" },
+        "battery": { "$ref": "#/$defs/battery" }
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# Desktop (Windows & Linux) runtime dependencies.
+# PySide6, pystray, websockets, pillow, pyinstaller are often already present.
+# psutil is the key one for CPU/memory/disk/battery metrics.
+psutil>=5.9
+PySide6>=6.6
+websockets>=12.0
+Pillow>=10.0
+pystray>=0.19

@@ -1,0 +1,42 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+venv/
+.venv/
+env/
+.Python
+
+# PyInstaller build artifacts
+desktop/build/
+desktop/dist/
+*.spec.bak
+
+# ---- Flutter / Dart ----
+android/.dart_tool/
+android/.packages
+android/build/
+android/.flutter-plugins
+android/.flutter-plugins-dependencies
+android/**/build/
+android/**/.gradle/
+android/**/local.properties
+android/**/.idea/
+android/**/GeneratedPluginRegistrant.java
+android/**/key.properties
+*.iml
+
+# ---- IDE / editor ----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# ---- App runtime data ----
+*.log
+alerts.log
+
+# ---- Local secrets / env ----
+.env
+*.local
