@@ -49,7 +49,7 @@ def main() -> int:
 
     def on_device_metrics(did: str, data) -> None:
         engine.on_metrics(did, data)
-        widget.update_remote_device(did, engine._names.get(did, did), data)
+        widget.update_remote_device(did, engine.device_name(did), data)
 
     def on_device_disconnected(did: str) -> None:
         engine.on_device_disconnected(did)

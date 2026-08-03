@@ -30,6 +30,9 @@ class AlertEngine:
     def on_device_disconnected(self, device_id: str) -> None:
         self._states.pop(device_id, None)
 
+    def device_name(self, device_id: str) -> str:
+        return self._names.get(device_id, device_id)
+
     @staticmethod
     def _fresh_state() -> dict:
         return {
