@@ -1,0 +1,114 @@
+/// Data model for a device's metrics, mirroring `protocol/schema.json`.
+///
+/// Fields that cannot be read are set to `null` (never omitted) so the desktop
+/// peer always sees the same shape.
+library;
+
+class CpuMetrics {
+  final double percent;
+  final int coreCount;
+  CpuMetrics({required this.percent, required this.coreCount});
+
+  Map<String, dynamic> toJson() => {
+        'percent': _round(percent),
+        'core_count': coreCount,
+      };
+}
+
+class GpuMetrics {
+  final bool available;
+  final double? percent;
+  final int? memoryUsedMb;
+  final int? memoryTotalMb;
+  final double? temperatureC;
+
+  GpuMetrics.unavailable()
+      : available = false,
+        percent = null,
+        memoryUsedMb = null,
+        memoryTotalMb = null,
+        temperatureC = null;
+
+  Map<String, dynamic> toJson() => {
+        'available': available,
+        'percent': percent == null ? null : _round(percent!),
+        'memory_used_mb': memoryUsedMb,
+        'memory_total_mb': memoryTotalMb,
+        'temperature_c': temperatureC,
+      };
+}
+
+class MemoryMetrics {
+  final double percent;
+  final int usedMb;
+  final int totalMb;
+  MemoryMetrics({required this.percent, required this.usedMb, required this.totalMb});
+
+  Map<String, dynamic> toJson() => {
+        'percent': _round(percent),
+        'used_mb': usedMb,
+        'total_mb': totalMb,
+      };
+}
+
+class DiskMetrics {
+  final double percent;
+  final double usedGb;
+  final double totalGb;
+  DiskMetrics({required this.percent, required this.usedGb, required this.totalGb});
+
+  Map<String, dynamic> toJson() => {
+        'percent': _round(percent),
+        'used_gb': _round(usedGb),
+        'total_gb': _round(totalGb),
+      };
+}
+
+class BatteryMetrics {
+  final bool present;
+  final double? percent;
+  final bool? plugged;
+  // charging | discharging | full | no_battery | unknown
+  final String status;
+
+  BatteryMetrics({
+    required this.present,
+    required this.percent,
+    required this.plugged,
+    required this.status,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'present': present,
+        'percent': percent == null ? null : _round(percent!),
+        'plugged': plugged,
+        'status': status,
+      };
+}
+
+class MetricsPayload {
+  final CpuMetrics cpu;
+  final GpuMetrics gpu;
+  final MemoryMetrics memory;
+  final DiskMetrics disk;
+  final BatteryMetrics battery;
+
+  MetricsPayload({
+    required this.cpu,
+    required this.gpu,
+    required this.memory,
+    required this.disk,
+    required this.battery,
+  });
+
+  /// The `data` field of a `metrics` message (see protocol/SPEC.md).
+  Map<String, dynamic> toDataJson() => {
+        'cpu': cpu.toJson(),
+        'gpu': gpu.toJson(),
+        'memory': memory.toJson(),
+        'disk': disk.toJson(),
+        'battery': battery.toJson(),
+      };
+}
+
+double _round(double v) => (v * 10).roundToDouble() / 10;

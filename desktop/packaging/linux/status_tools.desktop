@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Status Tools
+Comment=Cross-platform resource monitor (CPU/GPU/RAM/disk/battery)
+Exec=status_tools
+Icon=status_tools
+Type=Application
+Categories=System;Monitor;
+Terminal=false
