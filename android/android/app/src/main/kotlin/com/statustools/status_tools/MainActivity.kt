@@ -24,6 +24,10 @@ class MainActivity : FlutterActivity() {
     // Previous /proc/stat snapshot as [total, idle].
     private var lastCpu: LongArray? = null
 
+    // Last successfully computed CPU percent, so a transient/blocked read does
+    // not drop the display to 0.
+    private var lastGoodCpuPercent: Double? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
@@ -37,8 +41,18 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    /**
+     * CPU usage, best-effort across Android versions.
+     *
+     * 1. `/proc/stat` delta (instantaneous) — works where readable.
+     * 2. `/proc/loadavg` estimate (load1 / cores) — used when `/proc/stat` is
+     *    blocked (common on Android 10+, e.g. Samsung One UI) or on the very
+     *    first sample before a baseline exists.
+     * 3. Otherwise return the last known-good value (or 0 if never read).
+     */
     private fun readCpuPercent(): Double {
-        return try {
+        // Attempt 1: /proc/stat delta.
+        try {
             val line = File("/proc/stat").readLines().first()
             // "cpu  user nice system idle iowait irq softirq steal ..."
             val fields = line.split(Regex("\\s+")).drop(1).map { it.toLong() }
@@ -48,17 +62,34 @@ class MainActivity : FlutterActivity() {
             val prev = lastCpu
             lastCpu = longArrayOf(total, idle)
 
-            if (prev == null) {
-                0.0 // First sample has no baseline yet.
-            } else {
+            if (prev != null) {
                 val dTotal = total - prev[0]
                 val dIdle = idle - prev[1]
-                if (dTotal <= 0) 0.0
-                else ((dTotal - dIdle).toDouble() / dTotal * 100.0).coerceIn(0.0, 100.0)
+                if (dTotal > 0) {
+                    val pct = ((dTotal - dIdle).toDouble() / dTotal * 100.0).coerceIn(0.0, 100.0)
+                    lastGoodCpuPercent = pct
+                    return pct
+                }
             }
+            // First sample (no baseline) falls through to the loadavg estimate.
         } catch (e: Exception) {
-            0.0
+            lastCpu = null // /proc/stat likely blocked; don't keep a stale baseline.
         }
+
+        // Attempt 2: /proc/loadavg estimate.
+        try {
+            val parts = File("/proc/loadavg").readText().trim().split(Regex("\\s+"))
+            val load1 = parts[0].toDouble()
+            val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+            val pct = (load1 / cores * 100.0).coerceIn(0.0, 100.0)
+            lastGoodCpuPercent = pct
+            return pct
+        } catch (e: Exception) {
+            // fall through
+        }
+
+        // Attempt 3: last known-good value.
+        return lastGoodCpuPercent ?: 0.0
     }
 
     private fun readMemoryInfo(): Map<String, Any> {

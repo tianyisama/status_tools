@@ -211,13 +211,24 @@ class RemoteDeviceCard(QWidget):
 
 # ---- background collector thread ------------------------------------------
 class MetricsWorker(QThread):
+    """Collects metrics on a background thread.
+
+    The interval can be changed at runtime via :meth:`set_interval` without
+    recreating the thread (recreating risks deleting a still-running QThread,
+    which crashes the app). Sleep is done in small increments so ``stop()`` and
+    interval changes take effect promptly.
+    """
+
     metrics_ready = Signal(object)
 
     def __init__(self, interval_seconds: float, parent=None):
         super().__init__(parent)
-        self._interval_ms = int(interval_seconds * 1000)
+        self._interval_ms = max(200, int(interval_seconds * 1000))
         self._running = True
         self._collector = MetricsCollector()
+
+    def set_interval(self, interval_seconds: float) -> None:
+        self._interval_ms = max(200, int(interval_seconds * 1000))
 
     def run(self) -> None:  # noqa: D102
         self._collector.collect()  # prime cpu_percent
@@ -227,7 +238,11 @@ class MetricsWorker(QThread):
                 self.metrics_ready.emit(payload)
             except Exception:
                 pass
-            self.msleep(self._interval_ms)
+            # Sleep in small slices so stop()/set_interval() react quickly.
+            slept = 0
+            while self._running and slept < self._interval_ms:
+                self.msleep(100)
+                slept += 100
 
     def stop(self) -> None:
         self._running = False
@@ -412,12 +427,8 @@ class StatusWidget(QWidget):
             self.move(fallback)
 
     def set_interval(self, seconds: float) -> None:
-        """Restart the collector thread with a new refresh interval."""
-        self._worker.stop()
-        self._worker.wait(1500)
-        self._worker = MetricsWorker(seconds)
-        self._worker.metrics_ready.connect(self._on_metrics)
-        self._worker.start()
+        """Update the collector's refresh interval without restarting the thread."""
+        self._worker.set_interval(seconds)
 
     # -- remote devices -----------------------------------------------------
     def update_remote_device(self, device_id: str, name: str, data: dict) -> None:
@@ -441,5 +452,9 @@ class StatusWidget(QWidget):
         self.hide()
 
     def shutdown(self) -> None:
+        try:
+            self._worker.metrics_ready.disconnect(self._on_metrics)
+        except Exception:
+            pass
         self._worker.stop()
         self._worker.wait(1500)

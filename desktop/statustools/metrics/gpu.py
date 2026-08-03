@@ -8,11 +8,20 @@ expensive and the widget ticks every couple of seconds. Never raises.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
 
 from .models import GpuData
+
+# On Windows a GUI (console-less) process spawning a console app like nvidia-smi
+# would otherwise flash a visible console window on every poll. CREATE_NO_WINDOW
+# suppresses that. See bug: "CMD window keeps flashing".
+if os.name == "nt":
+    _SUBPROCESS_KWARGS = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+else:
+    _SUBPROCESS_KWARGS = {}
 
 _QUERY = (
     "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu"
@@ -48,6 +57,7 @@ class GpuReader:
                 [self._nvidia_smi, _QUERY, _FORMAT],
                 timeout=3,
                 stderr=subprocess.DEVNULL,
+                **_SUBPROCESS_KWARGS,
             )
             first_line = out.decode(errors="replace").strip().splitlines()[0]
             fields = [f.strip() for f in first_line.split(",")]
