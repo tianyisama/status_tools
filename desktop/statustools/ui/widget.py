@@ -9,7 +9,7 @@ Metric collection happens on a worker ``QThread`` so the UI never blocks on the
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QPoint, QRectF, Signal, QThread
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QFont
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -110,11 +110,11 @@ class MetricCard(QWidget):
         top.addStretch(1)
         top.addWidget(self.value)
 
-        self.bar = Bar()
+        self.bar = Bar(height=5)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(3)
         layout.addLayout(top)
         layout.addWidget(self.bar)
         self.setLayout(layout)
@@ -280,8 +280,8 @@ class StatusWidget(QWidget):
     # -- construction -------------------------------------------------------
     def _build_ui(self) -> None:
         root = QVBoxLayout()
-        root.setContentsMargins(14, 12, 14, 14)
-        root.setSpacing(10)
+        root.setContentsMargins(12, 10, 12, 12)
+        root.setSpacing(7)
 
         # Header
         title = QLabel("Status Tools")
@@ -345,9 +345,12 @@ class StatusWidget(QWidget):
     def _on_metrics(self, payload: MetricsPayload) -> None:
         m = payload
 
+        cpu_bits = [f"{m.cpu.core_count} 核"]
+        if m.cpu.temperature_c is not None:
+            cpu_bits.append(f"{m.cpu.temperature_c:.0f}°C")
         self.card_cpu.update_card(
             "🧮", "CPU", f"{m.cpu.percent:.0f}%", m.cpu.percent, _usage_color(m.cpu.percent),
-            detail=f"{m.cpu.core_count} 核",
+            detail=" · ".join(cpu_bits),
         )
 
         if m.gpu.available:
@@ -392,12 +395,23 @@ class StatusWidget(QWidget):
     def paintEvent(self, _event) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect())
         path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()), 14, 14)
-        bg = QColor(BG)
-        bg.setAlphaF(self.config.widget_opacity)
-        p.fillPath(path, bg)
-        p.setPen(QPen(BORDER, 1))
+        path.addRoundedRect(rect, 14, 14)
+
+        # Glass body: vertical gradient, slightly lighter at the top.
+        opacity = self.config.widget_opacity
+        top = QColor(BG)
+        top.setAlphaF(max(0.0, min(1.0, opacity - 0.10)))
+        bottom = QColor(BG)
+        bottom.setAlphaF(max(0.0, min(1.0, opacity + 0.02)))
+        grad = QLinearGradient(0.0, 0.0, 0.0, rect.height())
+        grad.setColorAt(0.0, top)
+        grad.setColorAt(1.0, bottom)
+        p.fillPath(path, QBrush(grad))
+
+        # Top highlight + outer border for a "glass" edge.
+        p.setPen(QPen(QColor(255, 255, 255, 34), 1))
         p.drawPath(path)
 
     # -- dragging -----------------------------------------------------------
@@ -439,6 +453,9 @@ class StatusWidget(QWidget):
             self.remote_layout.addWidget(card)
         card.update_card(name, data)
         self.remote_header.setVisible(True)
+        # Grow the window so the new card is actually visible.
+        self.adjustSize()
+        self.update()
 
     def remove_remote_device(self, device_id: str) -> None:
         card = self._remote_cards.pop(device_id, None)
@@ -447,6 +464,8 @@ class StatusWidget(QWidget):
             card.deleteLater()
         if not self._remote_cards:
             self.remote_header.setVisible(False)
+        self.adjustSize()
+        self.update()
 
     def close_to_tray(self) -> None:
         self.hide()

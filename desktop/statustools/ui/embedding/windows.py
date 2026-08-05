@@ -72,7 +72,7 @@ def _find_desktop_parent() -> int | None:
     # Encourage Explorer to materialise the wallpaper WorkerW.
     result = ctypes.c_size_t(0)
     _user32.SendMessageTimeoutW(
-        progman, _WM_SPAWN_WORKERW, 0xD, 0x1, 0x0, 1000, ctypes.byref(result)
+        progman, _WM_SPAWN_WORKERW, 0xD, 0x1, 0x0, 300, ctypes.byref(result)
     )
 
     # Layout B: icon view directly under Progman -> wallpaper WorkerW is the
@@ -142,6 +142,50 @@ def unembed(hwnd: int) -> bool:
     """Detach from the desktop layer back to a normal top-level window."""
     try:
         _user32.SetParent(hwnd, None)
+        return True
+    except Exception:
+        return False
+
+
+class _ACCENT_POLICY(ctypes.Structure):
+    _fields_ = [
+        ("AccentState", ctypes.c_int),
+        ("AccentFlags", ctypes.c_int),
+        ("GradientColor", ctypes.c_int),
+        ("AnimationId", ctypes.c_int),
+    ]
+
+
+class _WCA_DATA(ctypes.Structure):
+    _fields_ = [
+        ("Attribute", ctypes.c_int),
+        ("Data", ctypes.POINTER(_ACCENT_POLICY)),
+        ("SizeOfData", ctypes.c_size_t),
+    ]
+
+
+_WCA_ACCENT_POLICY = 19
+_ACCENT_ENABLE_ACRYLIC = 4
+
+
+def set_acrylic(hwnd: int, rgba: tuple[int, int, int, int] = (18, 18, 24, 0)) -> bool:
+    """Enable Windows 10/11 acrylic (frosted-glass blur) on the window.
+
+    ``rgba`` is a subtle tint (red, green, blue, alpha 0-255). Best-effort: on
+    systems where acrylic is unavailable this simply has no visible effect.
+    """
+    try:
+        r, g, b, a = rgba
+        accent = _ACCENT_POLICY()
+        accent.AccentState = _ACCENT_ENABLE_ACRYLIC
+        accent.AccentFlags = 2
+        # GradientColor is 0xAABBGGRR.
+        accent.GradientColor = (a << 24) | (b << 16) | (g << 8) | r
+        data = _WCA_DATA()
+        data.Attribute = _WCA_ACCENT_POLICY
+        data.Data = ctypes.pointer(accent)
+        data.SizeOfData = ctypes.sizeof(accent)
+        _user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
         return True
     except Exception:
         return False

@@ -14,9 +14,14 @@ from typing import Optional
 class CpuData:
     percent: float
     core_count: int
+    temperature_c: Optional[float] = None
 
     def to_dict(self) -> dict:
-        return {"percent": round(self.percent, 1), "core_count": self.core_count}
+        return {
+            "percent": round(self.percent, 1),
+            "core_count": self.core_count,
+            "temperature_c": self.temperature_c,
+        }
 
 
 @dataclass

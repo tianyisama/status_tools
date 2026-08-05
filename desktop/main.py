@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication
 from statustools.alerts.engine import AlertEngine
 from statustools.alerts.notifier import Notifier
 from statustools.config import Config
+from statustools.net.discovery import DiscoveryResponder
 from statustools.net.server import MetricsServer, NetBridge
 from statustools.ui.embedding import apply_embedding
 from statustools.ui.settings import SettingsDialog
@@ -34,7 +35,9 @@ def main() -> int:
 
     widget = StatusWidget(config)
     tray = TrayController()
-    settings = SettingsDialog(config)
+    # Built lazily on first open: constructing it probes the network for local IPs,
+    # which can take seconds and would delay startup.
+    settings = None
 
     # --- networking + alerts ------------------------------------------------
     device_name = platform.node() or "Desktop"
@@ -43,6 +46,7 @@ def main() -> int:
     engine = AlertEngine(config, notifier)
     bridge = NetBridge()
     server = MetricsServer(config, bridge, device_id, device_name)
+    discovery = DiscoveryResponder(config, device_id, device_name)
 
     def on_device_connected(did: str, name: str) -> None:
         engine.on_device_connected(did, name)
@@ -60,6 +64,7 @@ def main() -> int:
     bridge.device_disconnected.connect(on_device_disconnected)
 
     server.start()
+    discovery.start()
 
     # --- wire up signals ----------------------------------------------------
     def show_widget() -> None:
@@ -72,6 +77,10 @@ def main() -> int:
         hide_widget() if widget.isVisible() else show_widget()
 
     def open_settings() -> None:
+        nonlocal settings
+        if settings is None:
+            settings = SettingsDialog(config)
+            settings.saved.connect(apply_live_settings)
         settings.exec()
 
     def apply_live_settings() -> None:
@@ -97,22 +106,33 @@ def main() -> int:
     tray.hide_widget.connect(hide_widget)
     tray.toggle_widget.connect(toggle_widget)
     tray.open_settings.connect(open_settings)
-
-    settings.saved.connect(apply_live_settings)
+    tray.quit_app.connect(app.quit)
 
     # --- position + show ----------------------------------------------------
     screen = app.primaryScreen().availableGeometry()
     fallback = QPoint(screen.right() - widget.width() - 40, screen.top() + 60)
 
+    # Show the UI immediately; the desktop-embedding step below can block briefly.
     widget.show()
+    tray.show()
+
+    # Windows frosted-glass (acrylic) backdrop, best-effort.
+    if config.acrylic and os.name == "nt":
+        try:
+            from statustools.ui.embedding.windows import set_acrylic
+
+            set_acrylic(int(widget.winId()))
+        except Exception:
+            pass
+
     # Try to embed into the desktop layer; otherwise keep the bottom-most window.
     apply_embedding(widget, config)
     widget.restore_position(fallback)
-    tray.show()
 
     # --- teardown -----------------------------------------------------------
     def shutdown() -> None:
         server.stop()
+        discovery.stop()
         widget.shutdown()
         config.save()
 

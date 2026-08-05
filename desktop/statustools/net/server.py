@@ -156,23 +156,46 @@ class MetricsServer:
             pass
 
 
+_LOCAL_IP_CACHE: list[str] | None = None
+
+
 def local_ip_addresses() -> list[str]:
-    """Return likely LAN IPv4 addresses (for showing the user what to type on the phone)."""
-    addrs = []
-    try:
-        hostname = socket.gethostname()
-        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
-            ip = info[4][0]
-            if ip not in addrs and not ip.startswith("127."):
-                addrs.append(ip)
-    except Exception:
-        pass
-    if not addrs:
+    """Return likely LAN IPv4 addresses (for showing the user what to type on the phone).
+
+    Fast and cached: resolves the egress interface via a UDP "connect" (no packet is
+    actually sent), which avoids the slow ``getaddrinfo`` lookup of the machine's own
+    hostname. ``getaddrinfo`` is only used as a fallback.
+    """
+    global _LOCAL_IP_CACHE
+    if _LOCAL_IP_CACHE is not None:
+        return _LOCAL_IP_CACHE
+
+    addrs: list[str] = []
+    # UDP connect just selects the egress interface; nothing is transmitted.
+    for probe in ("223.5.5.5", "8.8.8.8", "1.1.1.1"):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            addrs.append(s.getsockname()[0])
+            s.settimeout(0.3)
+            s.connect((probe, 80))
+            ip = s.getsockname()[0]
             s.close()
+            if ip and not ip.startswith("127.") and ip not in addrs:
+                addrs.append(ip)
+            break
+        except Exception:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    if not addrs:
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                ip = info[4][0]
+                if ip not in addrs and not ip.startswith("127."):
+                    addrs.append(ip)
         except Exception:
             pass
+
+    _LOCAL_IP_CACHE = addrs
     return addrs

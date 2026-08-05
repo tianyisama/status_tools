@@ -31,6 +31,7 @@ class Config:
     widget_x: Optional[int] = None
     widget_y: Optional[int] = None
     embed_desktop: bool = True          # try desktop embedding (Phase 2)
+    acrylic: bool = True                # Windows frosted-glass (acrylic) backdrop
     theme: str = "dark"
 
     # Alerts

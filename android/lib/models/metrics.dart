@@ -7,11 +7,13 @@ library;
 class CpuMetrics {
   final double percent;
   final int coreCount;
-  CpuMetrics({required this.percent, required this.coreCount});
+  final double? temperatureC; // not available on Android without root
+  CpuMetrics({required this.percent, required this.coreCount, this.temperatureC});
 
   Map<String, dynamic> toJson() => {
         'percent': _round(percent),
         'core_count': coreCount,
+        'temperature_c': temperatureC,
       };
 }
 
@@ -70,12 +72,14 @@ class BatteryMetrics {
   final bool? plugged;
   // charging | discharging | full | no_battery | unknown
   final String status;
+  final double? temperatureC;
 
   BatteryMetrics({
     required this.present,
     required this.percent,
     required this.plugged,
     required this.status,
+    this.temperatureC,
   });
 
   Map<String, dynamic> toJson() => {
@@ -83,6 +87,7 @@ class BatteryMetrics {
         'percent': percent == null ? null : _round(percent!),
         'plugged': plugged,
         'status': status,
+        'temperature_c': temperatureC,
       };
 }
 
