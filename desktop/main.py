@@ -100,9 +100,10 @@ def main() -> int:
             pass
 
     def apply_live_settings() -> None:
-        # Opacity + interval apply immediately; embed mode applies on next launch.
+        # Opacity + interval + theme apply immediately; embed mode on next launch.
         widget.update()
         widget.set_interval(config.update_interval_seconds)
+        widget.set_theme_mode(config.theme_mode)
         apply_acrylic_state()
         # Push updated thresholds to connected clients.
         server.broadcast_config(
@@ -140,6 +141,10 @@ def main() -> int:
     # Windows frosted-glass (acrylic) backdrop, best-effort. Applied after
     # embedding because reparenting can reset the composition attribute.
     apply_acrylic_state()
+
+    # Sample the wallpaper once now so the widget starts with the right
+    # text colour instead of waiting for the first periodic sample.
+    widget.refresh_theme()
 
     # --- teardown -----------------------------------------------------------
     def shutdown() -> None:

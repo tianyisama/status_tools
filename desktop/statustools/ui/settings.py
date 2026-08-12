@@ -9,6 +9,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -31,6 +32,12 @@ QGroupBox { border: 1px solid #34343f; border-radius: 8px; margin-top: 12px;
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #9698a0; }
 QSpinBox, QDoubleSpinBox { background: #26262f; border: 1px solid #34343f;
             border-radius: 5px; padding: 3px 6px; }
+QComboBox { background: #26262f; border: 1px solid #34343f;
+            border-radius: 5px; padding: 3px 8px; }
+QComboBox QAbstractItemView { background: #26262f; color: #ebecf0;
+            border: 1px solid #34343f; selection-background-color: #6096ff;
+            selection-color: #ffffff; }
+QComboBox::drop-down { border: none; width: 18px; }
 QCheckBox { spacing: 6px; }
 QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px;
             border: 1px solid #45454f; background: #26262f; }
@@ -76,10 +83,18 @@ class SettingsDialog(QDialog):
         self.chk_acrylic = QCheckBox("玻璃 / 亚克力毛玻璃背景（Windows，需重启或保存后生效）")
         self.chk_acrylic.setChecked(c.acrylic)
 
+        self.combo_theme = QComboBox()
+        self.combo_theme.addItem("自动（跟随壁纸明暗）", "auto")
+        self.combo_theme.addItem("深色", "dark")
+        self.combo_theme.addItem("浅色", "light")
+        idx = self.combo_theme.findData(c.theme_mode)
+        self.combo_theme.setCurrentIndex(max(0, idx))
+
         g_appear = QGroupBox("外观")
         f_appear = QFormLayout()
         f_appear.addRow("刷新间隔", self.spin_interval)
         f_appear.addRow("不透明度", self.spin_opacity)
+        f_appear.addRow("外观模式", self.combo_theme)
         f_appear.addRow(self.chk_embed)
         f_appear.addRow(self.chk_acrylic)
         g_appear.setLayout(f_appear)
@@ -183,6 +198,7 @@ class SettingsDialog(QDialog):
         c = self.config
         c.update_interval_seconds = self.spin_interval.value()
         c.widget_opacity = self.spin_opacity.value()
+        c.theme_mode = self.combo_theme.currentData()
         c.embed_desktop = self.chk_embed.isChecked()
         c.acrylic = self.chk_acrylic.isChecked()
 

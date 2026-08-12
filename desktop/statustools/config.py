@@ -32,7 +32,8 @@ class Config:
     widget_y: Optional[int] = None
     embed_desktop: bool = True          # try desktop embedding (Phase 2)
     acrylic: bool = True                # Windows frosted-glass (acrylic) backdrop
-    theme: str = "dark"
+    # "auto" follows the desktop wallpaper luminance; "dark"/"light" override.
+    theme_mode: str = "auto"
 
     # Alerts
     thresholds: AlertThresholds = field(default_factory=AlertThresholds)

@@ -1,8 +1,10 @@
 /// Collects the phone's own metrics.
 ///
-/// Battery comes from `battery_plus`; CPU / memory / storage come from the
-/// Kotlin platform channel (`statustools/metrics`), since Dart cannot read
-/// `/proc`. GPU is not readable on Android without root -> always N/A.
+/// Battery comes from `battery_plus`; memory / storage / battery temperature
+/// come from the Kotlin platform channel (`statustools/metrics`). CPU is read
+/// directly from `/proc/stat` with `dart:io` (no channel round-trip): a
+/// snapshot-delta over the app's own refresh cadence, like psutil on desktop.
+/// GPU is not readable on Android without root -> always N/A.
 library;
 
 import 'dart:io';
@@ -49,12 +51,83 @@ class MetricsCollector {
     );
   }
 
+  // Previous /proc/stat snapshot, used to compute a delta between refreshes.
+  ({int total, int idle})? _prevCpuSample;
+
   Future<CpuMetrics> _readCpu() async {
+    final coreCount = Platform.numberOfProcessors;
+
+    double? computePercent(({int total, int idle}) a, ({int total, int idle}) b) {
+      final dTotal = b.total - a.total;
+      final dIdle = b.idle - a.idle;
+      if (dTotal <= 0) return null;
+      return ((dTotal - dIdle) / dTotal * 100).clamp(0.0, 100.0).toDouble();
+    }
+
+    final sample = await _readProcStat();
+    if (sample != null) {
+      final prev = _prevCpuSample;
+      if (prev != null) {
+        _prevCpuSample = sample;
+        final percent = computePercent(prev, sample);
+        if (percent != null) {
+          return CpuMetrics(percent: percent, coreCount: coreCount);
+        }
+        // Fall through to the next attempt when the delta is unusable.
+      } else {
+        // First read: take a second sample ~350ms later so the percentage is
+        // a real reading instead of 0.
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        final second = await _readProcStat();
+        _prevCpuSample = second ?? sample;
+        if (second != null) {
+          final percent = computePercent(sample, second);
+          if (percent != null) {
+            return CpuMetrics(percent: percent, coreCount: coreCount);
+          }
+        }
+      }
+    }
+
+    // Fallback: /proc/loadavg estimate (load1 / cores), readable everywhere.
     try {
-      final percent = await _channel.invokeMethod<double>('getCpuPercent');
-      return CpuMetrics(percent: percent ?? 0.0, coreCount: Platform.numberOfProcessors);
+      final text = await File('/proc/loadavg').readAsString();
+      final load1 = double.tryParse(text.trim().split(RegExp(r'\s+')).first);
+      if (load1 != null && load1 >= 0) {
+        final cores = coreCount < 1 ? 1 : coreCount;
+        return CpuMetrics(
+          percent: (load1 / cores * 100).clamp(0.0, 100.0).toDouble(),
+          coreCount: coreCount,
+        );
+      }
+    } catch (_) {}
+
+    return CpuMetrics(percent: 0.0, coreCount: coreCount);
+  }
+
+  /// Reads the aggregate "cpu" line of /proc/stat as {total, idle} ticks;
+  /// null if the file is unreadable or the line is malformed.
+  Future<({int total, int idle})?> _readProcStat() async {
+    try {
+      final text = await File('/proc/stat').readAsString();
+      final line = text
+          .split('\n')
+          .firstWhere((l) => l.startsWith('cpu '), orElse: () => '');
+      if (line.isEmpty) return null;
+      final fields = line
+          .split(RegExp(r'\s+'))
+          .skip(1)
+          .map(int.tryParse)
+          .whereType<int>()
+          .toList();
+      if (fields.isEmpty) return null;
+      final idle =
+          (fields.length > 3 ? fields[3] : 0) + (fields.length > 4 ? fields[4] : 0);
+      final total = fields.fold<int>(0, (sum, f) => sum + f);
+      if (total <= 0) return null;
+      return (total: total, idle: idle);
     } catch (_) {
-      return CpuMetrics(percent: 0.0, coreCount: Platform.numberOfProcessors);
+      return null;
     }
   }
 

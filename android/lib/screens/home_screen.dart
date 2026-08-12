@@ -125,24 +125,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   _ConnectionChip(state: _conn, config: widget.config, error: widget.client.lastError),
                   const SizedBox(height: 18),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      RingGauge(
-                        value: m.cpu.percent,
-                        label: 'CPU',
-                        icon: Icons.memory,
-                        caption: m.cpu.temperatureC != null
-                            ? '${m.cpu.temperatureC!.toStringAsFixed(0)}°C · ${m.cpu.coreCount} 核'
-                            : '${m.cpu.coreCount} 核',
+                      Expanded(
+                        child: RingGauge(
+                          value: m.cpu.percent,
+                          label: 'CPU',
+                          icon: Icons.memory,
+                          caption: m.cpu.temperatureC != null
+                              ? '${m.cpu.temperatureC!.toStringAsFixed(0)}°C · ${m.cpu.coreCount} 核'
+                              : '${m.cpu.coreCount} 核',
+                        ),
                       ),
-                      RingGauge(
-                        value: m.memory.percent,
-                        label: '内存',
-                        icon: Icons.sd_storage,
-                        caption:
-                            '${(m.memory.usedMb / 1024).toStringAsFixed(1)}/${(m.memory.totalMb / 1024).toStringAsFixed(1)} GB',
+                      Expanded(
+                        child: RingGauge(
+                          value: m.memory.percent,
+                          label: '内存',
+                          icon: Icons.sd_storage,
+                          caption:
+                              '${(m.memory.usedMb / 1024).toStringAsFixed(1)}/${(m.memory.totalMb / 1024).toStringAsFixed(1)} GB',
+                        ),
                       ),
-                      _batteryGauge(m.battery),
+                      Expanded(child: _batteryGauge(m.battery)),
                     ],
                   ),
                   const SizedBox(height: 18),

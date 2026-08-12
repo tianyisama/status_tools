@@ -1,15 +1,20 @@
 """The frameless, translucent, draggable desktop widget.
 
 It is *not* always-on-top: it uses ``WindowStaysOnBottomHint`` in fallback mode
-and (optionally, Phase 2) gets re-parented into the desktop layer via WorkerW.
-Metric collection happens on a worker ``QThread`` so the UI never blocks on the
+and (optionally) gets re-parented into the desktop layer via WorkerW. Metric
+collection happens on a worker ``QThread`` so the UI never blocks on the
 ``nvidia-smi`` subprocess.
+
+The widget is a rounded glass card whose text colours adapt to the desktop
+background: when ``config.theme_mode == "auto"``, a timer samples the screen
+luminance around the widget and swaps between the dark and light glass
+palettes from :mod:`.theme`.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QPoint, QRectF, Signal, QThread
-from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QFont
+from PySide6.QtCore import Qt, QPoint, QRectF, Signal, QThread, QTimer
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -20,33 +25,26 @@ from PySide6.QtWidgets import (
 
 from ..metrics.collector import MetricsCollector
 from ..metrics.models import MetricsPayload
+from .theme import WidgetTheme, get, hex, rgba, resolve, sample_wallpaper_luminance
 
-# ---- palette ---------------------------------------------------------------
-BG = QColor(18, 18, 24)
-BORDER = QColor(255, 255, 255, 26)
-FG = QColor(235, 236, 240)
-FG_DIM = QColor(150, 152, 160)
-TRACK = QColor(255, 255, 255, 22)
-GREEN = QColor(76, 217, 123)
-YELLOW = QColor(255, 180, 84)
-RED = QColor(255, 92, 92)
-ACCENT = QColor(96, 150, 255)
+_CORNER = 18  # widget outer corner radius
+_FALLBACK_THEME = get("dark")  # used before the first apply_theme() call
 
 
-def _usage_color(percent: float) -> QColor:
+def _usage_color(percent: float, theme: WidgetTheme) -> QColor:
     if percent >= 85:
-        return RED
+        return theme.bad
     if percent >= 60:
-        return YELLOW
-    return GREEN
+        return theme.warn
+    return theme.good
 
 
-def _battery_color(percent: float, low: int, critical: int) -> QColor:
+def _battery_color(percent: float, low: int, critical: int, theme: WidgetTheme) -> QColor:
     if percent <= critical:
-        return RED
+        return theme.bad
     if percent <= low:
-        return YELLOW
-    return GREEN
+        return theme.warn
+    return theme.good
 
 
 # ---- tiny custom progress bar ---------------------------------------------
@@ -56,7 +54,8 @@ class Bar(QWidget):
     def __init__(self, height: int = 6, parent=None):
         super().__init__(parent)
         self._value = 0.0
-        self._color = GREEN
+        self._color = QColor(76, 217, 123)
+        self._track = QColor(255, 255, 255, 22)
         self.setFixedHeight(height)
         self.setMinimumWidth(60)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -66,13 +65,17 @@ class Bar(QWidget):
         self._color = color
         self.update()
 
+    def apply_theme(self, theme: WidgetTheme) -> None:
+        self._track = theme.track
+        self.update()
+
     def paintEvent(self, _event) -> None:  # noqa: N802 (Qt naming)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        r = QRectF(self.rect().adjusted(0, 0, 0, 0))
+        r = QRectF(self.rect())
         radius = r.height() / 2
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(TRACK)
+        p.setBrush(self._track)
         p.drawRoundedRect(r, radius, radius)
         if self._value > 0:
             width = max(r.height(), r.width() * self._value / 100.0)
@@ -83,23 +86,22 @@ class Bar(QWidget):
 
 # ---- one metric row --------------------------------------------------------
 class MetricCard(QWidget):
+    """A glass mini-card: icon, label, value, and a thin progress bar."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._theme = None  # type: WidgetTheme | None
 
         self.icon = QLabel()
         self.icon.setFixedWidth(22)
         self.icon.setStyleSheet("font-size: 15px; background: transparent;")
 
         self.name = QLabel()
-        self.name.setStyleSheet("color: #ebecf0; font-size: 11px; font-weight: 600; background: transparent;")
-
         self.detail = QLabel()
-        self.detail.setStyleSheet("color: #9698a0; font-size: 9px; background: transparent;")
-
         self.value = QLabel()
         self.value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.value.setStyleSheet("color: #ebecf0; font-size: 12px; font-weight: 700; background: transparent;")
 
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
@@ -113,8 +115,8 @@ class MetricCard(QWidget):
         self.bar = Bar(height=5)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(3)
+        layout.setContentsMargins(9, 8, 9, 8)
+        layout.setSpacing(4)
         layout.addLayout(top)
         layout.addWidget(self.bar)
         self.setLayout(layout)
@@ -138,6 +140,23 @@ class MetricCard(QWidget):
             self.bar.setVisible(True)
             self.bar.set(percent, color)
 
+    def apply_theme(self, theme: WidgetTheme) -> None:
+        self._theme = theme
+        self.setStyleSheet(
+            "MetricCard { background: %s; border: 1px solid %s; border-radius: 11px; }"
+            % (rgba(theme.card), rgba(theme.card_border))
+        )
+        self.name.setStyleSheet(
+            f"color: {hex(theme.fg)}; font-size: 11px; font-weight: 600; background: transparent;"
+        )
+        self.detail.setStyleSheet(
+            f"color: {hex(theme.fg_dim)}; font-size: 9px; background: transparent;"
+        )
+        self.value.setStyleSheet(
+            f"color: {hex(theme.fg)}; font-size: 12px; font-weight: 700; background: transparent;"
+        )
+        self.bar.apply_theme(theme)
+
 
 # ---- remote device card ----------------------------------------------------
 class RemoteDeviceCard(QWidget):
@@ -147,25 +166,19 @@ class RemoteDeviceCard(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(
-            "RemoteDeviceCard { background: rgba(255,255,255,0.06); border-radius: 10px; }"
-        )
+        self._theme = None  # type: WidgetTheme | None
+        self._accent = QColor(96, 150, 255)
 
         self.icon = QLabel("📱")
         self.icon.setFixedWidth(20)
         self.icon.setStyleSheet("font-size: 14px; background: transparent;")
 
         self.name = QLabel()
-        self.name.setStyleSheet("color: #ebecf0; font-size: 11px; font-weight: 600; background: transparent;")
-
         self.value = QLabel()
         self.value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.value.setStyleSheet("color: #ebecf0; font-size: 12px; font-weight: 700; background: transparent;")
 
         self.bar = Bar(height=4)
-
         self.detail = QLabel()
-        self.detail.setStyleSheet("color: #9698a0; font-size: 9px; background: transparent;")
 
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
@@ -196,16 +209,18 @@ class RemoteDeviceCard(QWidget):
             else:
                 self.icon.setText("🔋")
             self.value.setText(f"{pct:.0f}%")
-            color = _battery_color(pct, 30, 15)
+            color = _battery_color(pct, 30, 15, self._theme or _FALLBACK_THEME)
             self.value.setStyleSheet(
-                f"color: {color.name()}; font-size: 12px; font-weight: 700; background: transparent;"
+                f"color: {hex(color)}; font-size: 12px; font-weight: 700; background: transparent;"
             )
             self.bar.setVisible(True)
             self.bar.set(pct, color)
         else:
             self.icon.setText("🔌")
             self.value.setText("AC")
-            self.value.setStyleSheet("color: #6096ff; font-size: 12px; font-weight: 700; background: transparent;")
+            self.value.setStyleSheet(
+                f"color: {hex(self._accent)}; font-size: 12px; font-weight: 700; background: transparent;"
+            )
             self.bar.setVisible(False)
 
         bits = []
@@ -219,6 +234,21 @@ class RemoteDeviceCard(QWidget):
         if mem.get("percent") is not None:
             bits.append(f"内存 {mem['percent']:.0f}%")
         self.detail.setText(" · ".join(bits))
+
+    def apply_theme(self, theme: WidgetTheme) -> None:
+        self._theme = theme
+        self._accent = theme.accent
+        self.setStyleSheet(
+            "RemoteDeviceCard { background: %s; border: 1px solid %s; border-radius: 11px; }"
+            % (rgba(theme.card), rgba(theme.card_border))
+        )
+        self.name.setStyleSheet(
+            f"color: {hex(theme.fg)}; font-size: 11px; font-weight: 600; background: transparent;"
+        )
+        self.detail.setStyleSheet(
+            f"color: {hex(theme.fg_dim)}; font-size: 9px; background: transparent;"
+        )
+        self.bar.apply_theme(theme)
 
 
 # ---- background collector thread ------------------------------------------
@@ -273,6 +303,10 @@ class StatusWidget(QWidget):
         self.config = config
         self._drag_offset: QPoint | None = None
         self._remote_cards: dict[str, RemoteDeviceCard] = {}
+        self._theme = get(config.theme_mode if config.theme_mode != "auto" else "dark")
+        self._theme_timer = QTimer(self)
+        self._theme_timer.setInterval(4000)
+        self._theme_timer.timeout.connect(self._adapt_theme)
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -286,6 +320,8 @@ class StatusWidget(QWidget):
         self.setMouseTracking(True)
 
         self._build_ui()
+        self._apply_theme(self._theme)
+        self._theme_timer.start()
 
         # Worker thread for metric collection.
         self._worker = MetricsWorker(config.update_interval_seconds)
@@ -300,8 +336,10 @@ class StatusWidget(QWidget):
 
         # Header
         title = QLabel("Status Tools")
-        title.setStyleSheet("color: #ebecf0; font-size: 13px; font-weight: 700; background: transparent;")
+        self.title = title
+        title.setStyleSheet("font-size: 13px; font-weight: 700; background: transparent;")
 
+        self._buttons: list[QPushButton] = []
         btn_settings = self._icon_button("⚙", "设置")
         btn_settings.clicked.connect(self.request_settings.emit)
         btn_hide = self._icon_button("✕", "隐藏到托盘")
@@ -321,16 +359,21 @@ class StatusWidget(QWidget):
         self.card_mem = MetricCard()
         self.card_disk = MetricCard()
         self.card_battery = MetricCard()
+        self._cards = (
+            self.card_cpu,
+            self.card_gpu,
+            self.card_mem,
+            self.card_disk,
+            self.card_battery,
+        )
 
         root.addLayout(header)
-        for card in (self.card_cpu, self.card_gpu, self.card_mem, self.card_disk, self.card_battery):
+        for card in self._cards:
             root.addWidget(card)
 
         # Remote (connected) devices section
         self.remote_header = QLabel("已连接设备")
-        self.remote_header.setStyleSheet(
-            "color: #9698a0; font-size: 10px; font-weight: 600; background: transparent;"
-        )
+        self.remote_header.setStyleSheet("font-size: 10px; font-weight: 600; background: transparent;")
         self.remote_header.setVisible(False)
         self.remote_layout = QVBoxLayout()
         self.remote_layout.setContentsMargins(0, 0, 0, 0)
@@ -343,28 +386,65 @@ class StatusWidget(QWidget):
 
         self.setLayout(root)
 
-    @staticmethod
-    def _icon_button(glyph: str, tooltip: str) -> QPushButton:
+    def _icon_button(self, glyph: str, tooltip: str) -> QPushButton:
         b = QPushButton(glyph)
         b.setFixedSize(24, 24)
         b.setToolTip(tooltip)
         b.setCursor(Qt.CursorShape.PointingHandCursor)
-        b.setStyleSheet(
-            "QPushButton { background: rgba(255,255,255,0.06); color: #c8cad2;"
-            " border: none; border-radius: 6px; font-size: 13px; }"
-            "QPushButton:hover { background: rgba(255,255,255,0.14); color: #ffffff; }"
-        )
+        self._buttons.append(b)
         return b
+
+    # -- theming ------------------------------------------------------------
+    def refresh_theme(self) -> None:
+        """Sample the wallpaper and apply the theme immediately (e.g. at startup)."""
+        self._adapt_theme(force=True)
+
+    def set_theme_mode(self, mode: str) -> None:
+        """Apply a new theme_mode ("auto"/"dark"/"light") right away."""
+        self.config.theme_mode = mode
+        self._adapt_theme(force=True)
+
+    def _adapt_theme(self, force: bool = False) -> None:
+        if self.config.theme_mode != "auto":
+            new_name = self.config.theme_mode
+        else:
+            lum = sample_wallpaper_luminance(self)
+            if lum is None:
+                return  # keep current theme
+            new_name = resolve("auto", lum, self._theme.name)
+        if force or new_name != self._theme.name:
+            self._apply_theme(get(new_name))
+
+    def _apply_theme(self, theme: WidgetTheme) -> None:
+        self._theme = theme
+        self.title.setStyleSheet(
+            f"color: {hex(theme.fg)}; font-size: 13px; font-weight: 700; background: transparent;"
+        )
+        self.remote_header.setStyleSheet(
+            f"color: {hex(theme.fg_dim)}; font-size: 10px; font-weight: 600; background: transparent;"
+        )
+        for b in self._buttons:
+            b.setStyleSheet(
+                "QPushButton { background: %s; color: %s; border: none; border-radius: 7px; font-size: 13px; }"
+                "QPushButton:hover { background: %s; color: %s; }"
+                % (rgba(theme.button), hex(theme.button_fg), rgba(theme.button_hover), hex(theme.fg))
+            )
+        for card in self._cards:
+            card.apply_theme(theme)
+        for card in self._remote_cards.values():
+            card.apply_theme(theme)
+        self.update()
 
     # -- data binding -------------------------------------------------------
     def _on_metrics(self, payload: MetricsPayload) -> None:
         m = payload
+        t = self._theme
 
         cpu_bits = [f"{m.cpu.core_count} 核"]
         if m.cpu.temperature_c is not None:
             cpu_bits.append(f"{m.cpu.temperature_c:.0f}°C")
         self.card_cpu.update_card(
-            "🧮", "CPU", f"{m.cpu.percent:.0f}%", m.cpu.percent, _usage_color(m.cpu.percent),
+            "🧮", "CPU", f"{m.cpu.percent:.0f}%", m.cpu.percent, _usage_color(m.cpu.percent, t),
             detail=" · ".join(cpu_bits),
         )
 
@@ -373,18 +453,18 @@ class StatusWidget(QWidget):
             temp = f"{m.gpu.temperature_c:.0f}°C" if m.gpu.temperature_c is not None else ""
             detail = " · ".join(x for x in (vram, temp) if x)
             self.card_gpu.update_card(
-                "🎮", "GPU", f"{m.gpu.percent:.0f}%", m.gpu.percent, _usage_color(m.gpu.percent), detail=detail,
+                "🎮", "GPU", f"{m.gpu.percent:.0f}%", m.gpu.percent, _usage_color(m.gpu.percent, t), detail=detail,
             )
         else:
-            self.card_gpu.update_card("🎮", "GPU", "N/A", None, FG_DIM, detail="不可用")
+            self.card_gpu.update_card("🎮", "GPU", "N/A", None, t.fg_dim, detail="不可用")
 
         self.card_mem.update_card(
-            "🧠", "内存", f"{m.memory.percent:.0f}%", m.memory.percent, _usage_color(m.memory.percent),
+            "🧠", "内存", f"{m.memory.percent:.0f}%", m.memory.percent, _usage_color(m.memory.percent, t),
             detail=f"{m.memory.used_mb/1024:.1f}/{m.memory.total_mb/1024:.1f} GB",
         )
 
         self.card_disk.update_card(
-            "💽", "磁盘", f"{m.disk.percent:.0f}%", m.disk.percent, _usage_color(m.disk.percent),
+            "💽", "磁盘", f"{m.disk.percent:.0f}%", m.disk.percent, _usage_color(m.disk.percent, t),
             detail=f"{m.disk.used_gb:.0f}/{m.disk.total_gb:.0f} GB",
         )
 
@@ -392,7 +472,7 @@ class StatusWidget(QWidget):
         th = self.config.thresholds
         if not b.present:
             # No battery (desktop) -> plug icon, no percentage bar.
-            self.card_battery.update_card("🔌", "电源", "AC 供电", None, ACCENT, detail="未检测到电池")
+            self.card_battery.update_card("🔌", "电源", "AC 供电", None, t.accent, detail="未检测到电池")
         else:
             pct = b.percent if b.percent is not None else 0.0
             if b.plugged:
@@ -402,7 +482,8 @@ class StatusWidget(QWidget):
                 icon = "🔋"
                 state = "放电中"
             self.card_battery.update_card(
-                icon, "电量", f"{pct:.0f}%", pct, _battery_color(pct, th.battery_low_percent, th.battery_critical_percent),
+                icon, "电量", f"{pct:.0f}%", pct,
+                _battery_color(pct, th.battery_low_percent, th.battery_critical_percent, t),
                 detail=state,
             )
 
@@ -418,21 +499,32 @@ class StatusWidget(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(self.rect())
         path = QPainterPath()
-        path.addRoundedRect(rect, 14, 14)
+        path.addRoundedRect(rect, _CORNER, _CORNER)
 
-        # Glass body: vertical gradient, slightly lighter at the top.
+        # Glass body: vertical gradient, slightly lighter at the top. The
+        # opacity setting scales the body alpha, like frosted glass.
         opacity = self.config.widget_opacity
-        top = QColor(BG)
+        top = QColor(self._theme.bg)
         top.setAlphaF(max(0.0, min(1.0, opacity - 0.10)))
-        bottom = QColor(BG)
+        bottom = QColor(self._theme.bg_dim)
         bottom.setAlphaF(max(0.0, min(1.0, opacity + 0.02)))
         grad = QLinearGradient(0.0, 0.0, 0.0, rect.height())
         grad.setColorAt(0.0, top)
         grad.setColorAt(1.0, bottom)
         p.fillPath(path, QBrush(grad))
 
-        # Top highlight + outer border for a "glass" edge.
-        p.setPen(QPen(QColor(255, 255, 255, 34), 1))
+        # Soft top glow for glass depth (clipped to the card).
+        p.save()
+        p.setClipPath(path)
+        glow = QLinearGradient(0.0, 0.0, 0.0, rect.height() * 0.45)
+        glow.setColorAt(0.0, self._theme.glow)
+        glow.setColorAt(1.0, QColor(self._theme.glow.red(), self._theme.glow.green(),
+                                    self._theme.glow.blue(), 0))
+        p.fillRect(rect, QBrush(glow))
+        p.restore()
+
+        # Outer edge.
+        p.setPen(QPen(self._theme.border, 1))
         p.drawPath(path)
 
     # -- dragging -----------------------------------------------------------
@@ -471,6 +563,7 @@ class StatusWidget(QWidget):
         if card is None:
             card = RemoteDeviceCard()
             self._remote_cards[device_id] = card
+            card.apply_theme(self._theme)
             self.remote_layout.addWidget(card)
         card.update_card(name, data)
         self.remote_header.setVisible(True)
@@ -492,6 +585,7 @@ class StatusWidget(QWidget):
         self.hide()
 
     def shutdown(self) -> None:
+        self._theme_timer.stop()
         try:
             self._worker.metrics_ready.disconnect(self._on_metrics)
         except Exception:
