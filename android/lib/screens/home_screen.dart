@@ -147,8 +147,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 18),
                   _StorageTile(disk: m.disk),
-                  const SizedBox(height: 10),
-                  _GpuTile(),
                   if (_peers.isNotEmpty) ...[
                     const SizedBox(height: 22),
                     Padding(
@@ -284,28 +282,6 @@ class _StorageTile extends StatelessWidget {
             '已用 ${disk.usedGb.toStringAsFixed(0)} / ${disk.totalGb.toStringAsFixed(0)} GB',
             style: TextStyle(fontSize: 12, color: cs.outline),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GpuTile extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.videogame_asset_rounded, size: 20, color: cs.outline),
-          const SizedBox(width: 10),
-          const Expanded(child: Text('GPU', style: TextStyle(fontWeight: FontWeight.w600))),
-          Text('N/A（安卓不可读）', style: TextStyle(fontSize: 12.5, color: cs.outline)),
         ],
       ),
     );

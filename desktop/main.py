@@ -86,10 +86,24 @@ def main() -> int:
             settings.saved.connect(apply_live_settings)
         settings.exec()
 
+    def apply_acrylic_state() -> None:
+        if os.name != "nt":
+            return
+        try:
+            from statustools.ui.embedding.windows import clear_acrylic, set_acrylic
+
+            if config.acrylic:
+                set_acrylic(int(widget.winId()))
+            else:
+                clear_acrylic(int(widget.winId()))
+        except Exception:
+            pass
+
     def apply_live_settings() -> None:
         # Opacity + interval apply immediately; embed mode applies on next launch.
         widget.update()
         widget.set_interval(config.update_interval_seconds)
+        apply_acrylic_state()
         # Push updated thresholds to connected clients.
         server.broadcast_config(
             {
@@ -119,18 +133,13 @@ def main() -> int:
     widget.show()
     tray.show()
 
-    # Windows frosted-glass (acrylic) backdrop, best-effort.
-    if config.acrylic and os.name == "nt":
-        try:
-            from statustools.ui.embedding.windows import set_acrylic
-
-            set_acrylic(int(widget.winId()))
-        except Exception:
-            pass
-
     # Try to embed into the desktop layer; otherwise keep the bottom-most window.
     apply_embedding(widget, config)
     widget.restore_position(fallback)
+
+    # Windows frosted-glass (acrylic) backdrop, best-effort. Applied after
+    # embedding because reparenting can reset the composition attribute.
+    apply_acrylic_state()
 
     # --- teardown -----------------------------------------------------------
     def shutdown() -> None:

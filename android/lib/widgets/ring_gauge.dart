@@ -1,4 +1,7 @@
 /// An animated circular gauge used for CPU / memory / battery.
+///
+/// The ring's centre shows only the percentage; the icon sits next to the label
+/// below the ring, so the icon and the number never overlap.
 library;
 
 import 'dart:math' as math;
@@ -20,7 +23,7 @@ class RingGauge extends StatelessWidget {
     required this.icon,
     this.color,
     this.caption,
-    this.size = 108,
+    this.size = 104,
   });
 
   Color _color(BuildContext context) {
@@ -50,26 +53,26 @@ class RingGauge extends StatelessWidget {
                 track: cs.surfaceContainerHighest,
               ),
               child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 18, color: c),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${v.toInt()}%',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: c),
-                    ),
-                  ],
+                child: Text(
+                  '${v.toInt()}%',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 19, color: c),
                 ),
               ),
             );
           },
         ),
         const SizedBox(height: 8),
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: c),
+            const SizedBox(width: 5),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ],
+        ),
         if (caption != null && caption!.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.only(top: 3),
             child: Text(caption!, style: TextStyle(fontSize: 11, color: cs.outline)),
           ),
       ],

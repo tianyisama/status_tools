@@ -165,6 +165,7 @@ class _WCA_DATA(ctypes.Structure):
 
 
 _WCA_ACCENT_POLICY = 19
+_ACCENT_DISABLED = 0
 _ACCENT_ENABLE_ACRYLIC = 4
 
 
@@ -181,6 +182,23 @@ def set_acrylic(hwnd: int, rgba: tuple[int, int, int, int] = (18, 18, 24, 0)) ->
         accent.AccentFlags = 2
         # GradientColor is 0xAABBGGRR.
         accent.GradientColor = (a << 24) | (b << 16) | (g << 8) | r
+        data = _WCA_DATA()
+        data.Attribute = _WCA_ACCENT_POLICY
+        data.Data = ctypes.pointer(accent)
+        data.SizeOfData = ctypes.sizeof(accent)
+        _user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
+        return True
+    except Exception:
+        return False
+
+
+def clear_acrylic(hwnd: int) -> bool:
+    """Disable the acrylic/accent effect (back to a normal window)."""
+    try:
+        accent = _ACCENT_POLICY()
+        accent.AccentState = _ACCENT_DISABLED
+        accent.AccentFlags = 0
+        accent.GradientColor = 0
         data = _WCA_DATA()
         data.Attribute = _WCA_ACCENT_POLICY
         data.Data = ctypes.pointer(accent)

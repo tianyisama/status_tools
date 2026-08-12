@@ -73,11 +73,15 @@ class SettingsDialog(QDialog):
         self.chk_embed = QCheckBox("嵌入桌面（Windows WorkerW；关闭则用置底窗口）")
         self.chk_embed.setChecked(c.embed_desktop)
 
+        self.chk_acrylic = QCheckBox("玻璃 / 亚克力毛玻璃背景（Windows，需重启或保存后生效）")
+        self.chk_acrylic.setChecked(c.acrylic)
+
         g_appear = QGroupBox("外观")
         f_appear = QFormLayout()
         f_appear.addRow("刷新间隔", self.spin_interval)
         f_appear.addRow("不透明度", self.spin_opacity)
         f_appear.addRow(self.chk_embed)
+        f_appear.addRow(self.chk_acrylic)
         g_appear.setLayout(f_appear)
 
         # Network
@@ -180,6 +184,7 @@ class SettingsDialog(QDialog):
         c.update_interval_seconds = self.spin_interval.value()
         c.widget_opacity = self.spin_opacity.value()
         c.embed_desktop = self.chk_embed.isChecked()
+        c.acrylic = self.chk_acrylic.isChecked()
 
         c.server_enabled = self.chk_server.isChecked()
         c.service_port = self.spin_service_port.value()

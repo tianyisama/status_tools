@@ -139,17 +139,21 @@ class MetricCard(QWidget):
             self.bar.set(percent, color)
 
 
-# ---- remote device row -----------------------------------------------------
+# ---- remote device card ----------------------------------------------------
 class RemoteDeviceCard(QWidget):
-    """Compact card for a connected remote device (battery-forward)."""
+    """A small rounded card for a connected remote device (battery-forward)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            "RemoteDeviceCard { background: rgba(255,255,255,0.06); border-radius: 10px; }"
+        )
 
         self.icon = QLabel("📱")
-        self.icon.setFixedWidth(22)
-        self.icon.setStyleSheet("font-size: 15px; background: transparent;")
+        self.icon.setFixedWidth(20)
+        self.icon.setStyleSheet("font-size: 14px; background: transparent;")
 
         self.name = QLabel()
         self.name.setStyleSheet("color: #ebecf0; font-size: 11px; font-weight: 600; background: transparent;")
@@ -157,6 +161,8 @@ class RemoteDeviceCard(QWidget):
         self.value = QLabel()
         self.value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.value.setStyleSheet("color: #ebecf0; font-size: 12px; font-weight: 700; background: transparent;")
+
+        self.bar = Bar(height=4)
 
         self.detail = QLabel()
         self.detail.setStyleSheet("color: #9698a0; font-size: 9px; background: transparent;")
@@ -170,9 +176,10 @@ class RemoteDeviceCard(QWidget):
         top.addWidget(self.value)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        layout.setContentsMargins(9, 8, 9, 8)
+        layout.setSpacing(4)
         layout.addLayout(top)
+        layout.addWidget(self.bar)
         layout.addWidget(self.detail)
         self.setLayout(layout)
 
@@ -193,17 +200,22 @@ class RemoteDeviceCard(QWidget):
             self.value.setStyleSheet(
                 f"color: {color.name()}; font-size: 12px; font-weight: 700; background: transparent;"
             )
+            self.bar.setVisible(True)
+            self.bar.set(pct, color)
         else:
             self.icon.setText("🔌")
             self.value.setText("AC")
             self.value.setStyleSheet("color: #6096ff; font-size: 12px; font-weight: 700; background: transparent;")
+            self.bar.setVisible(False)
 
         bits = []
         status = battery.get("status")
         if status and status != "no_battery":
             bits.append({"charging": "充电中", "full": "已充满", "discharging": "放电中"}.get(status, status))
         if cpu.get("percent") is not None:
-            bits.append(f"CPU {cpu['percent']:.0f}%")
+            cpu_temp = cpu.get("temperature_c")
+            temp_txt = f" {cpu_temp:.0f}°C" if cpu_temp is not None else ""
+            bits.append(f"CPU {cpu['percent']:.0f}%{temp_txt}")
         if mem.get("percent") is not None:
             bits.append(f"内存 {mem['percent']:.0f}%")
         self.detail.setText(" · ".join(bits))

@@ -85,28 +85,51 @@ def _read_temp_psutil() -> float | None:
     return round(max(pool), 1)
 
 
+# Windows CPU temperature, trying every common source in one PowerShell pass:
+#   1. ACPI thermal zones (root/wmi, MSAcpi_ThermalZoneTemperature) — no extra
+#      software, but many desktops don't expose it.
+#   2. LibreHardwareMonitor's WMI provider (root/LibreHardwareMonitor).
+#   3. OpenHardwareMonitor's WMI provider (root/OpenHardwareMonitor).
+# Sources 2/3 exist only while the respective monitor app is running.
+_PS_TEMP_SCRIPT = r"""
+$t = $null
+try {
+  $z = Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop
+  if ($z) { $t = (($z | Measure-Object -Property CurrentTemperature -Maximum).Maximum) / 10 - 273.15 }
+} catch {}
+if ($null -eq $t) {
+  foreach ($ns in 'root/LibreHardwareMonitor','root/OpenHardwareMonitor') {
+    try {
+      $s = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop |
+           Where-Object { $_.SensorType -eq 'Temperature' -and $_.Name -match 'CPU|Package|Core|Tctl|SoC' }
+      if ($s) { $t = ($s | Measure-Object -Property Value -Maximum).Maximum; break }
+    } catch {}
+  }
+}
+if ($null -ne $t) { Write-Output ([math]::Round($t,1)) }
+"""
+
+
 def _read_temp_wmi() -> float | None:
-    """Windows: thermal zones via WMI. Values are tenths of a degree Kelvin."""
+    """Windows: CPU temperature from multiple WMI sources (see _PS_TEMP_SCRIPT)."""
     try:
-        cmd = (
-            "Get-CimInstance -Namespace root/wmi "
-            "-ClassName MSAcpi_ThermalZoneTemperature "
-            "| Select-Object -ExpandProperty CurrentTemperature"
-        )
         out = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command", cmd],
-            timeout=6,
+            ["powershell", "-NoProfile", "-Command", _PS_TEMP_SCRIPT],
+            timeout=10,
             stderr=subprocess.DEVNULL,
             **_WIN_SUBPROCESS_KWARGS,
         )
-        text = out.decode(errors="ignore")
-        values = [int(x) for x in text.split() if x.lstrip("-").isdigit()]
-        if not values:
+        text = out.decode(errors="ignore").strip()
+        if not text:
             return None
-        kelvin_tenths = max(values)
-        celsius = kelvin_tenths / 10.0 - 273.15
-        if 0.0 <= celsius <= 125.0:
-            return round(celsius, 1)
+        # Accept either '45.5' or a bare number on the last non-empty line.
+        for token in reversed(text.split()):
+            try:
+                celsius = float(token)
+            except ValueError:
+                continue
+            if 0.0 <= celsius <= 125.0:
+                return round(celsius, 1)
         return None
     except Exception:
         return None

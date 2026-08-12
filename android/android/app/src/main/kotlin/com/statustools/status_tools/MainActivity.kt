@@ -24,9 +24,6 @@ class MainActivity : FlutterActivity() {
 
     private val channelName = "statustools/metrics"
 
-    // Previous /proc/stat snapshot as [total, idle].
-    private var lastCpu: LongArray? = null
-
     // Last successfully computed CPU percent, so a transient/blocked read does
     // not drop the display to 0.
     private var lastGoodCpuPercent: Double? = null
@@ -36,7 +33,14 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "getCpuPercent" -> result.success(readCpuPercent())
+                    "getCpuPercent" -> {
+                        // Measure off the platform thread (a short sampling window blocks),
+                        // then deliver the result back on the UI thread.
+                        Thread {
+                            val v = measureCpuPercent()
+                            runOnUiThread { result.success(v) }
+                        }.start()
+                    }
                     "getMemoryInfo" -> result.success(readMemoryInfo())
                     "getStorageInfo" -> result.success(readStorageInfo())
                     "getBatteryTemp" -> result.success(readBatteryTemp())
@@ -46,38 +50,31 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * CPU usage, best-effort across Android versions.
+     * CPU usage, best-effort across Android versions/OEMs.
      *
-     * 1. `/proc/stat` delta (instantaneous) — works where readable.
-     * 2. `/proc/loadavg` estimate (load1 / cores) — used when `/proc/stat` is
-     *    blocked (common on Android 10+, e.g. Samsung One UI) or on the very
-     *    first sample before a baseline exists.
-     * 3. Otherwise return the last known-good value (or 0 if never read).
+     * 1. Self-contained two-sample `/proc/stat` delta (accurate, ~250ms window).
+     * 2. `/proc/loadavg` estimate (load1 / cores) when `/proc/stat` is blocked.
+     * 3. `top -n 1` batch output as a further fallback.
+     * 4. Otherwise the last known-good value (or 0 if never read).
      */
-    private fun readCpuPercent(): Double {
-        // Attempt 1: /proc/stat delta.
-        try {
-            val line = File("/proc/stat").readLines().first()
-            // "cpu  user nice system idle iowait irq softirq steal ..."
-            val fields = line.split(Regex("\\s+")).drop(1).map { it.toLong() }
-            val idle = fields.getOrElse(3) { 0L } + fields.getOrElse(4) { 0L } // idle + iowait
-            val total = fields.sum()
-
-            val prev = lastCpu
-            lastCpu = longArrayOf(total, idle)
-
-            if (prev != null) {
-                val dTotal = total - prev[0]
-                val dIdle = idle - prev[1]
+    private fun measureCpuPercent(): Double {
+        // Attempt 1: two-sample /proc/stat delta.
+        val s1 = readProcStat()
+        if (s1 != null) {
+            try {
+                Thread.sleep(250)
+            } catch (_: InterruptedException) {
+            }
+            val s2 = readProcStat()
+            if (s2 != null) {
+                val dTotal = s2[0] - s1[0]
+                val dIdle = s2[1] - s1[1]
                 if (dTotal > 0) {
                     val pct = ((dTotal - dIdle).toDouble() / dTotal * 100.0).coerceIn(0.0, 100.0)
                     lastGoodCpuPercent = pct
                     return pct
                 }
             }
-            // First sample (no baseline) falls through to the loadavg estimate.
-        } catch (e: Exception) {
-            lastCpu = null // /proc/stat likely blocked; don't keep a stale baseline.
         }
 
         // Attempt 2: /proc/loadavg estimate.
@@ -88,12 +85,38 @@ class MainActivity : FlutterActivity() {
             val pct = (load1 / cores * 100.0).coerceIn(0.0, 100.0)
             lastGoodCpuPercent = pct
             return pct
-        } catch (e: Exception) {
-            // fall through
+        } catch (_: Exception) {
         }
 
-        // Attempt 3: last known-good value.
+        // Attempt 3: `top -n 1` batch output.
+        try {
+            val proc = Runtime.getRuntime().exec(arrayOf("top", "-n", "1", "-b"))
+            val out = proc.inputStream.bufferedReader().use { it.readText() }
+            proc.waitFor()
+            val totalMatch = Regex("(\\d+(?:\\.\\d+)?)%\\s*TOTAL").find(out)
+            if (totalMatch != null) {
+                val pct = totalMatch.groupValues[1].toDouble().coerceIn(0.0, 100.0)
+                lastGoodCpuPercent = pct
+                return pct
+            }
+        } catch (_: Exception) {
+        }
+
+        // Attempt 4: last known-good value.
         return lastGoodCpuPercent ?: 0.0
+    }
+
+    /** Reads the aggregate cpu line of /proc/stat as [total, idle]; null if blocked. */
+    private fun readProcStat(): LongArray? {
+        return try {
+            val line = File("/proc/stat").readLines().first()
+            // "cpu  user nice system idle iowait irq softirq steal ..."
+            val fields = line.split(Regex("\\s+")).drop(1).map { it.toLong() }
+            val idle = fields.getOrElse(3) { 0L } + fields.getOrElse(4) { 0L } // idle + iowait
+            longArrayOf(fields.sum(), idle)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun readMemoryInfo(): Map<String, Any> {
