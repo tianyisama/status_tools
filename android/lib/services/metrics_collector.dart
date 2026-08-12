@@ -102,7 +102,8 @@ class MetricsCollector {
       }
     } catch (_) {}
 
-    return CpuMetrics(percent: 0.0, coreCount: coreCount);
+    // Nothing readable -> null percent, shown as N/A (never a misleading 0%).
+    return CpuMetrics(percent: null, coreCount: coreCount);
   }
 
   /// Reads the aggregate "cpu" line of /proc/stat as {total, idle} ticks;

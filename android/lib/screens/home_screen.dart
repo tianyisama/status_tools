@@ -128,12 +128,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Expanded(
                         child: RingGauge(
-                          value: m.cpu.percent,
+                          value: m.cpu.percent ?? 0,
                           label: 'CPU',
                           icon: Icons.memory,
-                          caption: m.cpu.temperatureC != null
-                              ? '${m.cpu.temperatureC!.toStringAsFixed(0)}°C · ${m.cpu.coreCount} 核'
-                              : '${m.cpu.coreCount} 核',
+                          color: m.cpu.percent == null ? cs.outline : null,
+                          centerText: m.cpu.percent == null ? 'N/A' : null,
+                          caption: m.cpu.percent == null
+                              ? '无法读取'
+                              : (m.cpu.temperatureC != null
+                                  ? '${m.cpu.temperatureC!.toStringAsFixed(0)}°C · ${m.cpu.coreCount} 核'
+                                  : '${m.cpu.coreCount} 核'),
                         ),
                       ),
                       Expanded(

@@ -6,69 +6,207 @@
   "$defs": {
     "cpu": {
       "type": "object",
-      "required": ["percent", "core_count"],
+      "required": [
+        "percent",
+        "core_count"
+      ],
       "properties": {
-        "percent": { "type": "number", "minimum": 0, "maximum": 100 },
-        "core_count": { "type": "integer", "minimum": 1 },
-        "temperature_c": { "type": ["number", "null"] }
+        "percent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "core_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "temperature_c": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
       }
     },
     "gpu": {
       "type": "object",
-      "required": ["available", "percent", "memory_used_mb", "memory_total_mb", "temperature_c"],
+      "required": [
+        "available",
+        "percent",
+        "memory_used_mb",
+        "memory_total_mb",
+        "temperature_c"
+      ],
       "properties": {
-        "available": { "type": "boolean" },
-        "percent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
-        "memory_used_mb": { "type": ["integer", "null"], "minimum": 0 },
-        "memory_total_mb": { "type": ["integer", "null"], "minimum": 0 },
-        "temperature_c": { "type": ["number", "null"] }
+        "available": {
+          "type": "boolean"
+        },
+        "percent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "memory_used_mb": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "memory_total_mb": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "temperature_c": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
       }
     },
     "memory": {
       "type": "object",
-      "required": ["percent", "used_mb", "total_mb"],
+      "required": [
+        "percent",
+        "used_mb",
+        "total_mb"
+      ],
       "properties": {
-        "percent": { "type": "number", "minimum": 0, "maximum": 100 },
-        "used_mb": { "type": "integer", "minimum": 0 },
-        "total_mb": { "type": "integer", "minimum": 0 }
+        "percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "used_mb": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_mb": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "disk": {
       "type": "object",
-      "required": ["percent", "used_gb", "total_gb"],
+      "required": [
+        "percent",
+        "used_gb",
+        "total_gb"
+      ],
       "properties": {
-        "percent": { "type": "number", "minimum": 0, "maximum": 100 },
-        "used_gb": { "type": "number", "minimum": 0 },
-        "total_gb": { "type": "number", "minimum": 0 }
+        "percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "used_gb": {
+          "type": "number",
+          "minimum": 0
+        },
+        "total_gb": {
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "battery": {
       "type": "object",
-      "required": ["present", "percent", "plugged", "status"],
+      "required": [
+        "present",
+        "percent",
+        "plugged",
+        "status"
+      ],
       "properties": {
-        "present": { "type": "boolean" },
-        "percent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
-        "plugged": { "type": ["boolean", "null"] },
-        "status": { "type": "string", "enum": ["charging", "discharging", "full", "no_battery", "unknown"] },
-        "temperature_c": { "type": ["number", "null"] }
+        "present": {
+          "type": "boolean"
+        },
+        "percent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "plugged": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "charging",
+            "discharging",
+            "full",
+            "no_battery",
+            "unknown"
+          ]
+        },
+        "temperature_c": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
       }
     }
   },
   "type": "object",
-  "required": ["type", "device_id", "timestamp", "data"],
+  "required": [
+    "type",
+    "device_id",
+    "timestamp",
+    "data"
+  ],
   "properties": {
-    "type": { "const": "metrics" },
-    "device_id": { "type": "string" },
-    "timestamp": { "type": "number" },
+    "type": {
+      "const": "metrics"
+    },
+    "device_id": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "number"
+    },
     "data": {
       "type": "object",
-      "required": ["cpu", "gpu", "memory", "disk", "battery"],
+      "required": [
+        "cpu",
+        "gpu",
+        "memory",
+        "disk",
+        "battery"
+      ],
       "properties": {
-        "cpu": { "$ref": "#/$defs/cpu" },
-        "gpu": { "$ref": "#/$defs/gpu" },
-        "memory": { "$ref": "#/$defs/memory" },
-        "disk": { "$ref": "#/$defs/disk" },
-        "battery": { "$ref": "#/$defs/battery" }
+        "cpu": {
+          "$ref": "#/$defs/cpu"
+        },
+        "gpu": {
+          "$ref": "#/$defs/gpu"
+        },
+        "memory": {
+          "$ref": "#/$defs/memory"
+        },
+        "disk": {
+          "$ref": "#/$defs/disk"
+        },
+        "battery": {
+          "$ref": "#/$defs/battery"
+        }
       }
     }
   }

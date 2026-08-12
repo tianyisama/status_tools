@@ -5,13 +5,14 @@
 library;
 
 class CpuMetrics {
-  final double percent;
+  // null when /proc is unreadable on the device (shown as N/A, never as 0%).
+  final double? percent;
   final int coreCount;
   final double? temperatureC; // not available on Android without root
   CpuMetrics({required this.percent, required this.coreCount, this.temperatureC});
 
   Map<String, dynamic> toJson() => {
-        'percent': _round(percent),
+        'percent': percent == null ? null : _round(percent!),
         'core_count': coreCount,
         'temperature_c': temperatureC,
       };

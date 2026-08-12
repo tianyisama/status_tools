@@ -18,6 +18,9 @@ class RingGauge extends StatelessWidget {
   final Color? color;
   final String? caption;
   final double size;
+  /// When set, shown in the ring centre instead of the animated percentage
+  /// (e.g. "N/A" when a metric cannot be read on this device).
+  final String? centerText;
 
   const RingGauge({
     super.key,
@@ -27,6 +30,7 @@ class RingGauge extends StatelessWidget {
     this.color,
     this.caption,
     this.size = 104,
+    this.centerText,
   });
 
   Color _color(BuildContext context) {
@@ -58,7 +62,16 @@ class RingGauge extends StatelessWidget {
                   track: cs.surfaceContainerHighest,
                 ),
                 child: Center(
-                  child: _CenterPercent(value: v.toInt(), color: c, size: size),
+                  child: centerText != null
+                      ? Text(
+                          centerText!,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 19,
+                            color: c,
+                          ),
+                        )
+                      : _CenterPercent(value: v.toInt(), color: c, size: size),
                 ),
               );
             },

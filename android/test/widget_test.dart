@@ -50,4 +50,17 @@ void main() {
     expect(json['percent'], isNull);
     expect(json['status'], 'no_battery');
   });
+
+  test('Unreadable CPU serializes as null percent (N/A), never 0', () {
+    final payload = MetricsPayload(
+      cpu: CpuMetrics(percent: null, coreCount: 8),
+      gpu: GpuMetrics.unavailable(),
+      memory: MemoryMetrics(percent: 0, usedMb: 0, totalMb: 0),
+      disk: DiskMetrics(percent: 0, usedGb: 0, totalGb: 0),
+      battery: BatteryMetrics(present: false, percent: null, plugged: null, status: 'no_battery'),
+    );
+    final data = payload.toDataJson();
+    expect(data['cpu']['percent'], isNull);
+    expect(data['cpu']['core_count'], 8);
+  });
 }
