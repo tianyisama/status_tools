@@ -501,13 +501,14 @@ class StatusWidget(QWidget):
         path = QPainterPath()
         path.addRoundedRect(rect, _CORNER, _CORNER)
 
-        # Glass body: vertical gradient, slightly lighter at the top. The
-        # opacity setting scales the body alpha, like frosted glass.
+        # Glass body: near-uniform tint, very slightly lighter at the top.
+        # The opacity setting scales the body alpha; at the default ~0.6 the
+        # wallpaper shows through crisply (clear glass, not frosted).
         opacity = self.config.widget_opacity
         top = QColor(self._theme.bg)
-        top.setAlphaF(max(0.0, min(1.0, opacity - 0.10)))
+        top.setAlphaF(max(0.0, min(1.0, opacity - 0.06)))
         bottom = QColor(self._theme.bg_dim)
-        bottom.setAlphaF(max(0.0, min(1.0, opacity + 0.02)))
+        bottom.setAlphaF(max(0.0, min(1.0, opacity + 0.01)))
         grad = QLinearGradient(0.0, 0.0, 0.0, rect.height())
         grad.setColorAt(0.0, top)
         grad.setColorAt(1.0, bottom)

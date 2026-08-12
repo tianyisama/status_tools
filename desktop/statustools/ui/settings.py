@@ -80,7 +80,7 @@ class SettingsDialog(QDialog):
         self.chk_embed = QCheckBox("嵌入桌面（Windows WorkerW；关闭则用置底窗口）")
         self.chk_embed.setChecked(c.embed_desktop)
 
-        self.chk_acrylic = QCheckBox("玻璃 / 亚克力毛玻璃背景（Windows，需重启或保存后生效）")
+        self.chk_acrylic = QCheckBox("毛玻璃模糊背景（Windows 亚克力，会使圆角处出现底色方块）")
         self.chk_acrylic.setChecked(c.acrylic)
 
         self.combo_theme = QComboBox()

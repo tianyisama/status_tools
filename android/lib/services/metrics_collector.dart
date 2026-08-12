@@ -7,7 +7,9 @@
 /// GPU is not readable on Android without root -> always N/A.
 library;
 
+import 'dart:convert' show utf8;
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -90,9 +92,9 @@ class MetricsCollector {
     }
 
     // Fallback: /proc/loadavg estimate (load1 / cores), readable everywhere.
-    try {
-      final text = await File('/proc/loadavg').readAsString();
-      final load1 = double.tryParse(text.trim().split(RegExp(r'\s+')).first);
+    final loadText = await _readProcFile('/proc/loadavg');
+    if (loadText.isNotEmpty) {
+      final load1 = double.tryParse(loadText.trim().split(RegExp(r'\s+')).first);
       if (load1 != null && load1 >= 0) {
         final cores = coreCount < 1 ? 1 : coreCount;
         return CpuMetrics(
@@ -100,7 +102,7 @@ class MetricsCollector {
           coreCount: coreCount,
         );
       }
-    } catch (_) {}
+    }
 
     // Nothing readable -> null percent, shown as N/A (never a misleading 0%).
     return CpuMetrics(percent: null, coreCount: coreCount);
@@ -109,26 +111,36 @@ class MetricsCollector {
   /// Reads the aggregate "cpu" line of /proc/stat as {total, idle} ticks;
   /// null if the file is unreadable or the line is malformed.
   Future<({int total, int idle})?> _readProcStat() async {
+    final text = await _readProcFile('/proc/stat');
+    if (text.isEmpty) return null;
+    final line = text
+        .split('\n')
+        .firstWhere((l) => l.startsWith('cpu '), orElse: () => '');
+    if (line.isEmpty) return null;
+    final fields = line
+        .split(RegExp(r'\s+'))
+        .skip(1)
+        .map(int.tryParse)
+        .whereType<int>()
+        .toList();
+    if (fields.isEmpty) return null;
+    final idle =
+        (fields.length > 3 ? fields[3] : 0) + (fields.length > 4 ? fields[4] : 0);
+    final total = fields.fold<int>(0, (sum, f) => sum + f);
+    if (total <= 0) return null;
+    return (total: total, idle: idle);
+  }
+
+  /// Reads a file to EOF via a stream. dart:io's readAsString() sizes its
+  /// buffer from fstat's st_size, which is always 0 on procfs files
+  /// (/proc/*), so it silently returns ""; stream reads go to EOF and work.
+  Future<String> _readProcFile(String path) async {
     try {
-      final text = await File('/proc/stat').readAsString();
-      final line = text
-          .split('\n')
-          .firstWhere((l) => l.startsWith('cpu '), orElse: () => '');
-      if (line.isEmpty) return null;
-      final fields = line
-          .split(RegExp(r'\s+'))
-          .skip(1)
-          .map(int.tryParse)
-          .whereType<int>()
-          .toList();
-      if (fields.isEmpty) return null;
-      final idle =
-          (fields.length > 3 ? fields[3] : 0) + (fields.length > 4 ? fields[4] : 0);
-      final total = fields.fold<int>(0, (sum, f) => sum + f);
-      if (total <= 0) return null;
-      return (total: total, idle: idle);
+      final builder = BytesBuilder(copy: false);
+      await File(path).openRead().forEach(builder.add);
+      return utf8.decode(builder.takeBytes(), allowMalformed: true);
     } catch (_) {
-      return null;
+      return '';
     }
   }
 

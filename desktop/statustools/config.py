@@ -27,11 +27,11 @@ class Config:
 
     # Appearance / behaviour
     update_interval_seconds: float = 2.0
-    widget_opacity: float = 0.9
+    widget_opacity: float = 0.62        # clear-glass body transparency
     widget_x: Optional[int] = None
     widget_y: Optional[int] = None
     embed_desktop: bool = True          # try desktop embedding (Phase 2)
-    acrylic: bool = True                # Windows frosted-glass (acrylic) backdrop
+    acrylic: bool = False               # Windows frosted-glass (acrylic) backdrop
     # "auto" follows the desktop wallpaper luminance; "dark"/"light" override.
     theme_mode: str = "auto"
 
@@ -48,6 +48,13 @@ class Config:
         if path.exists():
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
+                # Migrate the old defaults (saved on every run before the
+                # clear-glass look): opaque body + acrylic caused black
+                # corners behind the rounded glass.
+                if raw.get("widget_opacity") == 0.9:
+                    raw["widget_opacity"] = Config.widget_opacity
+                if raw.get("acrylic") is True:
+                    raw["acrylic"] = Config.acrylic
                 cfg._merge(raw)
             except Exception:
                 pass  # corrupted config -> fall back to defaults
