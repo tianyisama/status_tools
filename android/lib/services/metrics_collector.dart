@@ -59,6 +59,32 @@ class MetricsCollector {
   Future<CpuMetrics> _readCpu() async {
     final coreCount = Platform.numberOfProcessors;
 
+    // Attempt 1: /proc/stat snapshot delta via dart:io streams (no fstat).
+    final fromProc = await _readCpuFromProcStat(coreCount);
+    if (fromProc != null) return fromProc;
+
+    // Attempt 2: /proc/loadavg estimate (load1 / cores).
+    final fromLoad = await _readCpuFromLoadavg(coreCount);
+    if (fromLoad != null) return fromLoad;
+
+    // Attempt 3: Kotlin platform channel (Java stream reads + `top`).
+    try {
+      final pct = await _channel.invokeMethod<double>('getCpuPercent');
+      if (pct != null && pct > 0) {
+        return CpuMetrics(
+          percent: pct.clamp(0.0, 100.0).toDouble(),
+          coreCount: coreCount,
+          source: 'channel',
+        );
+      }
+    } catch (_) {}
+
+    // Nothing readable -> null percent, shown as N/A (never a misleading 0%).
+    return CpuMetrics(percent: null, coreCount: coreCount, source: 'none');
+  }
+
+  /// /proc/stat snapshot-delta over the refresh cadence (like psutil).
+  Future<CpuMetrics?> _readCpuFromProcStat(int coreCount) async {
     double? computePercent(({int total, int idle}) a, ({int total, int idle}) b) {
       final dTotal = b.total - a.total;
       final dIdle = b.idle - a.idle;
@@ -67,45 +93,38 @@ class MetricsCollector {
     }
 
     final sample = await _readProcStat();
-    if (sample != null) {
-      final prev = _prevCpuSample;
-      if (prev != null) {
-        _prevCpuSample = sample;
-        final percent = computePercent(prev, sample);
-        if (percent != null) {
-          return CpuMetrics(percent: percent, coreCount: coreCount);
-        }
-        // Fall through to the next attempt when the delta is unusable.
-      } else {
-        // First read: take a second sample ~350ms later so the percentage is
-        // a real reading instead of 0.
-        await Future<void>.delayed(const Duration(milliseconds: 350));
-        final second = await _readProcStat();
-        _prevCpuSample = second ?? sample;
-        if (second != null) {
-          final percent = computePercent(sample, second);
-          if (percent != null) {
-            return CpuMetrics(percent: percent, coreCount: coreCount);
-          }
-        }
+    if (sample == null) return null;
+    final prev = _prevCpuSample;
+    if (prev != null) {
+      _prevCpuSample = sample;
+      final percent = computePercent(prev, sample);
+      if (percent != null) {
+        return CpuMetrics(percent: percent, coreCount: coreCount, source: 'proc');
       }
+      return null;
     }
+    // First read: take a second sample ~350ms later so the percentage is a
+    // real reading instead of 0.
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    final second = await _readProcStat();
+    _prevCpuSample = second ?? sample;
+    if (second == null) return null;
+    final percent = computePercent(sample, second);
+    if (percent == null) return null;
+    return CpuMetrics(percent: percent, coreCount: coreCount, source: 'proc');
+  }
 
-    // Fallback: /proc/loadavg estimate (load1 / cores), readable everywhere.
+  Future<CpuMetrics?> _readCpuFromLoadavg(int coreCount) async {
     final loadText = await _readProcFile('/proc/loadavg');
-    if (loadText.isNotEmpty) {
-      final load1 = double.tryParse(loadText.trim().split(RegExp(r'\s+')).first);
-      if (load1 != null && load1 >= 0) {
-        final cores = coreCount < 1 ? 1 : coreCount;
-        return CpuMetrics(
-          percent: (load1 / cores * 100).clamp(0.0, 100.0).toDouble(),
-          coreCount: coreCount,
-        );
-      }
-    }
-
-    // Nothing readable -> null percent, shown as N/A (never a misleading 0%).
-    return CpuMetrics(percent: null, coreCount: coreCount);
+    if (loadText.isEmpty) return null;
+    final load1 = double.tryParse(loadText.trim().split(RegExp(r'\s+')).first);
+    if (load1 == null || load1 < 0) return null;
+    final cores = coreCount < 1 ? 1 : coreCount;
+    return CpuMetrics(
+      percent: (load1 / cores * 100).clamp(0.0, 100.0).toDouble(),
+      coreCount: coreCount,
+      source: 'loadavg',
+    );
   }
 
   /// Reads the aggregate "cpu" line of /proc/stat as {total, idle} ticks;

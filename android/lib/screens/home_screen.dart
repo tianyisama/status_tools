@@ -133,11 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           icon: Icons.memory,
                           color: m.cpu.percent == null ? cs.outline : null,
                           centerText: m.cpu.percent == null ? 'N/A' : null,
-                          caption: m.cpu.percent == null
-                              ? '无法读取'
-                              : (m.cpu.temperatureC != null
-                                  ? '${m.cpu.temperatureC!.toStringAsFixed(0)}°C · ${m.cpu.coreCount} 核'
-                                  : '${m.cpu.coreCount} 核'),
+                          caption: _cpuCaption(m.cpu),
                         ),
                       ),
                       Expanded(
@@ -172,6 +168,19 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
       ),
     );
+  }
+
+  /// CPU caption; the source suffix doubles as diagnostics when the primary
+  /// /proc/stat reader is not available on a device.
+  String _cpuCaption(CpuMetrics cpu) {
+    if (cpu.percent == null) return '无法读取';
+    final cores = '${cpu.coreCount} 核';
+    if (cpu.source == 'proc') {
+      return cpu.temperatureC != null
+          ? '${cpu.temperatureC!.toStringAsFixed(0)}°C · $cores'
+          : cores;
+    }
+    return '$cores · ${cpu.source == 'loadavg' ? '估算' : '备用源'}';
   }
 
   Widget _batteryGauge(BatteryMetrics b) {

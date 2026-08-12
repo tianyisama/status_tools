@@ -27,7 +27,7 @@ class Config:
 
     # Appearance / behaviour
     update_interval_seconds: float = 2.0
-    widget_opacity: float = 0.62        # clear-glass body transparency
+    widget_opacity: float = 0.42        # clear-glass body transparency
     widget_x: Optional[int] = None
     widget_y: Optional[int] = None
     embed_desktop: bool = True          # try desktop embedding (Phase 2)
@@ -51,7 +51,7 @@ class Config:
                 # Migrate the old defaults (saved on every run before the
                 # clear-glass look): opaque body + acrylic caused black
                 # corners behind the rounded glass.
-                if raw.get("widget_opacity") == 0.9:
+                if raw.get("widget_opacity") in (0.9, 0.62):
                     raw["widget_opacity"] = Config.widget_opacity
                 if raw.get("acrylic") is True:
                     raw["acrylic"] = Config.acrylic

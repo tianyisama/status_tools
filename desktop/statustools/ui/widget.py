@@ -84,41 +84,41 @@ class Bar(QWidget):
             p.drawRoundedRect(fill, radius, radius)
 
 
-# ---- one metric row --------------------------------------------------------
-class MetricCard(QWidget):
-    """A glass mini-card: icon, label, value, and a thin progress bar."""
+# ---- one compact metric line ----------------------------------------------
+class MetricRow(QWidget):
+    """A single dense line: icon | name | bar | value | detail.
+
+    Deliberately borderless so the widget stays compact and the clear glass
+    shows through; the bar carries the usage colour, the value stays neutral.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._theme = None  # type: WidgetTheme | None
 
         self.icon = QLabel()
-        self.icon.setFixedWidth(22)
-        self.icon.setStyleSheet("font-size: 15px; background: transparent;")
+        self.icon.setFixedWidth(18)
+        self.icon.setStyleSheet("font-size: 14px; background: transparent;")
 
         self.name = QLabel()
-        self.detail = QLabel()
+        self.name.setFixedWidth(44)
+
+        self.bar = Bar(height=4)
+
         self.value = QLabel()
         self.value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-        top = QHBoxLayout()
-        top.setContentsMargins(0, 0, 0, 0)
-        top.setSpacing(6)
-        top.addWidget(self.icon)
-        top.addWidget(self.name)
-        top.addWidget(self.detail)
-        top.addStretch(1)
-        top.addWidget(self.value)
+        self.detail = QLabel()
 
-        self.bar = Bar(height=5)
-
-        layout = QVBoxLayout()
-        layout.setContentsMargins(9, 8, 9, 8)
-        layout.setSpacing(4)
-        layout.addLayout(top)
-        layout.addWidget(self.bar)
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(self.icon)
+        layout.addWidget(self.name)
+        layout.addWidget(self.bar, stretch=1)
+        layout.addWidget(self.value)
+        layout.addWidget(self.detail)
         self.setLayout(layout)
 
     def update_card(
@@ -142,10 +142,6 @@ class MetricCard(QWidget):
 
     def apply_theme(self, theme: WidgetTheme) -> None:
         self._theme = theme
-        self.setStyleSheet(
-            "MetricCard { background: %s; border: 1px solid %s; border-radius: 11px; }"
-            % (rgba(theme.card), rgba(theme.card_border))
-        )
         self.name.setStyleSheet(
             f"color: {hex(theme.fg)}; font-size: 11px; font-weight: 600; background: transparent;"
         )
@@ -189,8 +185,8 @@ class RemoteDeviceCard(QWidget):
         top.addWidget(self.value)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(9, 8, 9, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(7, 5, 7, 5)
+        layout.setSpacing(3)
         layout.addLayout(top)
         layout.addWidget(self.bar)
         layout.addWidget(self.detail)
@@ -331,13 +327,13 @@ class StatusWidget(QWidget):
     # -- construction -------------------------------------------------------
     def _build_ui(self) -> None:
         root = QVBoxLayout()
-        root.setContentsMargins(12, 10, 12, 12)
-        root.setSpacing(7)
+        root.setContentsMargins(12, 8, 12, 10)
+        root.setSpacing(3)
 
         # Header
         title = QLabel("Status Tools")
         self.title = title
-        title.setStyleSheet("font-size: 13px; font-weight: 700; background: transparent;")
+        title.setStyleSheet("font-size: 12px; font-weight: 700; background: transparent;")
 
         self._buttons: list[QPushButton] = []
         btn_settings = self._icon_button("⚙", "设置")
@@ -353,12 +349,12 @@ class StatusWidget(QWidget):
         header.addWidget(btn_settings)
         header.addWidget(btn_hide)
 
-        # Cards
-        self.card_cpu = MetricCard()
-        self.card_gpu = MetricCard()
-        self.card_mem = MetricCard()
-        self.card_disk = MetricCard()
-        self.card_battery = MetricCard()
+        # Compact metric lines
+        self.card_cpu = MetricRow()
+        self.card_gpu = MetricRow()
+        self.card_mem = MetricRow()
+        self.card_disk = MetricRow()
+        self.card_battery = MetricRow()
         self._cards = (
             self.card_cpu,
             self.card_gpu,
@@ -368,6 +364,7 @@ class StatusWidget(QWidget):
         )
 
         root.addLayout(header)
+        root.addSpacing(1)
         for card in self._cards:
             root.addWidget(card)
 
@@ -377,7 +374,7 @@ class StatusWidget(QWidget):
         self.remote_header.setVisible(False)
         self.remote_layout = QVBoxLayout()
         self.remote_layout.setContentsMargins(0, 0, 0, 0)
-        self.remote_layout.setSpacing(8)
+        self.remote_layout.setSpacing(6)
 
         root.addSpacing(2)
         root.addWidget(self.remote_header)
@@ -388,7 +385,7 @@ class StatusWidget(QWidget):
 
     def _icon_button(self, glyph: str, tooltip: str) -> QPushButton:
         b = QPushButton(glyph)
-        b.setFixedSize(24, 24)
+        b.setFixedSize(22, 22)
         b.setToolTip(tooltip)
         b.setCursor(Qt.CursorShape.PointingHandCursor)
         self._buttons.append(b)
@@ -502,11 +499,11 @@ class StatusWidget(QWidget):
         path.addRoundedRect(rect, _CORNER, _CORNER)
 
         # Glass body: near-uniform tint, very slightly lighter at the top.
-        # The opacity setting scales the body alpha; at the default ~0.6 the
+        # The opacity setting scales the body alpha; at the default ~0.42 the
         # wallpaper shows through crisply (clear glass, not frosted).
         opacity = self.config.widget_opacity
         top = QColor(self._theme.bg)
-        top.setAlphaF(max(0.0, min(1.0, opacity - 0.06)))
+        top.setAlphaF(max(0.0, min(1.0, opacity - 0.04)))
         bottom = QColor(self._theme.bg_dim)
         bottom.setAlphaF(max(0.0, min(1.0, opacity + 0.01)))
         grad = QLinearGradient(0.0, 0.0, 0.0, rect.height())

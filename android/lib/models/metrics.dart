@@ -9,7 +9,15 @@ class CpuMetrics {
   final double? percent;
   final int coreCount;
   final double? temperatureC; // not available on Android without root
-  CpuMetrics({required this.percent, required this.coreCount, this.temperatureC});
+  // Which reader produced the value: proc | loadavg | channel | none.
+  // Display-only, not part of the wire protocol.
+  final String source;
+  CpuMetrics({
+    required this.percent,
+    required this.coreCount,
+    this.temperatureC,
+    this.source = 'proc',
+  });
 
   Map<String, dynamic> toJson() => {
         'percent': percent == null ? null : _round(percent!),
