@@ -155,6 +155,28 @@ class MetricsServer:
         except Exception:
             pass
 
+    def broadcast_own_metrics(self, data: dict) -> None:
+        """Send this device's own metrics to all connected peers (best effort).
+
+        This lets a connected client display the desktop as a remote device, so
+        every device shows itself *and* the devices connected to it.
+        """
+        if not self._loop or not self.clients:
+            return
+        payload = protocol.dumps(protocol.make_metrics(self.device_id, data))
+
+        async def _send_all():
+            for ws in list(self.clients.values()):
+                try:
+                    await ws.send(payload)
+                except Exception:
+                    pass
+
+        try:
+            asyncio.run_coroutine_threadsafe(_send_all(), self._loop)
+        except Exception:
+            pass
+
 
 _LOCAL_IP_CACHE: list[str] | None = None
 

@@ -252,6 +252,9 @@ class MetricsWorker(QThread):
 class StatusWidget(QWidget):
     request_settings = Signal()
     request_hide = Signal()
+    # Emits the local MetricsPayload (protocol dict) on every refresh so the
+    # server can forward this device's own metrics to connected peers.
+    local_metrics = Signal(object)
 
     def __init__(self, config):
         super().__init__()
@@ -390,6 +393,12 @@ class StatusWidget(QWidget):
                 icon, "电量", f"{pct:.0f}%", pct, _battery_color(pct, th.battery_low_percent, th.battery_critical_percent),
                 detail=state,
             )
+
+        # Forward our own metrics to peers via the server (peer-to-peer display).
+        try:
+            self.local_metrics.emit(m.to_protocol_dict())
+        except Exception:
+            pass
 
     # -- painting -----------------------------------------------------------
     def paintEvent(self, _event) -> None:  # noqa: N802

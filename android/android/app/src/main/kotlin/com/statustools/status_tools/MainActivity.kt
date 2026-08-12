@@ -2,6 +2,9 @@ package com.statustools.status_tools
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.os.Environment
 import android.os.StatFs
 import io.flutter.embedding.android.FlutterActivity
@@ -36,6 +39,7 @@ class MainActivity : FlutterActivity() {
                     "getCpuPercent" -> result.success(readCpuPercent())
                     "getMemoryInfo" -> result.success(readMemoryInfo())
                     "getStorageInfo" -> result.success(readStorageInfo())
+                    "getBatteryTemp" -> result.success(readBatteryTemp())
                     else -> result.notImplemented()
                 }
             }
@@ -123,6 +127,18 @@ class MainActivity : FlutterActivity() {
             )
         } catch (e: Exception) {
             mapOf("percent" to 0.0, "usedGb" to 0.0, "totalGb" to 0.0)
+        }
+    }
+
+    /** Battery temperature in degrees Celsius (BatteryManager reports tenths). */
+    private fun readBatteryTemp(): Double {
+        return try {
+            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            val status = registerReceiver(null, filter)
+            val tenths = status?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
+            if (tenths > 0) tenths / 10.0 else 0.0
+        } catch (e: Exception) {
+            0.0
         }
     }
 }

@@ -1,9 +1,11 @@
-/// Settings: enter the desktop's IP:port (manual pairing), save, and connect.
+/// Settings: enter the desktop's IP:port (manual pairing) or auto-scan the LAN,
+/// then save and connect.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/discovery.dart';
 import '../services/websocket_client.dart';
 import '../utils/config.dart';
 
@@ -23,6 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _intervalCtrl;
   final _formKey = GlobalKey<FormState>();
   bool _saving = false;
+  bool _scanning = false;
 
   @override
   void initState() {
@@ -60,8 +63,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _scan() async {
+    setState(() => _scanning = true);
+    final devices = await DiscoveryScanner().scan();
+    if (!mounted) return;
+    setState(() => _scanning = false);
+    _showDevices(devices);
+  }
+
+  void _showDevices(List<DiscoveredDevice> devices) {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: cs.surface,
+      builder: (sheetContext) {
+        if (devices.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.radar_rounded, size: 40, color: cs.outline),
+                const SizedBox(height: 12),
+                const Text('没有发现设备', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Text(
+                  '请确认电脑端已打开并且和手机在同一局域网；也可以手动填写 IP。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: cs.outline),
+                ),
+              ],
+            ),
+          );
+        }
+        return ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              child: Text('发现 ${devices.length} 台设备',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            ),
+            ...devices.map(
+              (d) => ListTile(
+                leading: CircleAvatar(child: Icon(d.platform.contains('windows') ? Icons.desktop_windows : Icons.device_hub)),
+                title: Text(d.name),
+                subtitle: Text('${d.host}:${d.port}'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  _hostCtrl.text = d.host;
+                  _portCtrl.text = d.port.toString();
+                  Navigator.of(sheetContext).pop();
+                  setState(() {});
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('连接设置')),
       body: Form(
@@ -69,16 +136,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Text(
-              '在电脑端「设置 → 网络」里可以看到本机 IP。把它和端口填到下面，手机就会把指标推送给电脑。',
-              style: TextStyle(fontSize: 13, color: Colors.white70),
+            // Scan card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [cs.primary.withValues(alpha: 0.16), cs.tertiary.withValues(alpha: 0.10)]),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.radar_rounded, color: cs.primary),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      '自动搜索局域网里的电脑',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: _scanning ? null : _scan,
+                    icon: _scanning
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.search),
+                    label: Text(_scanning ? '搜索中' : '扫描'),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
+            Text('或手动填写', style: TextStyle(fontSize: 13, color: cs.outline)),
+            const SizedBox(height: 10),
             TextFormField(
               controller: _hostCtrl,
               decoration: const InputDecoration(
                 labelText: '桌面 IP 地址',
                 hintText: '例如 192.168.1.10',
+                prefixIcon: Icon(Icons.lan_outlined),
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.text,
@@ -91,43 +185,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _portCtrl,
-              decoration: const InputDecoration(
-                labelText: '端口',
-                hintText: '9700',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              validator: (v) {
-                final p = int.tryParse((v ?? '').trim());
-                if (p == null || p < 1 || p > 65535) return '端口需在 1–65535 之间';
-                return null;
-              },
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _portCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '端口',
+                      hintText: '9700',
+                      prefixIcon: Icon(Icons.numbers_rounded),
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (v) {
+                      final p = int.tryParse((v ?? '').trim());
+                      if (p == null || p < 1 || p > 65535) return '端口 1–65535';
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _intervalCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '间隔(秒)',
+                      prefixIcon: Icon(Icons.timer_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (v) {
+                      final i = int.tryParse((v ?? '').trim());
+                      if (i == null || i < 1 || i > 300) return '1–300';
+                      return null;
+                    },
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _intervalCtrl,
-              decoration: const InputDecoration(
-                labelText: '上报间隔（秒）',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              validator: (v) {
-                final i = int.tryParse((v ?? '').trim());
-                if (i == null || i < 1 || i > 300) return '间隔需在 1–300 秒之间';
-                return null;
-              },
-            ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 28),
             FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
               onPressed: _saving ? null : _saveAndConnect,
               icon: _saving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.link),
-              label: const Text('保存并连接'),
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.link_rounded),
+              label: Text(_saving ? '保存中…' : '保存并连接', style: const TextStyle(fontSize: 15)),
             ),
           ],
         ),

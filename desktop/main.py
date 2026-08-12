@@ -63,6 +63,9 @@ def main() -> int:
     bridge.device_metrics.connect(on_device_metrics)
     bridge.device_disconnected.connect(on_device_disconnected)
 
+    # Peer-to-peer: forward our own metrics to connected peers so they can show us.
+    widget.local_metrics.connect(server.broadcast_own_metrics)
+
     server.start()
     discovery.start()
 

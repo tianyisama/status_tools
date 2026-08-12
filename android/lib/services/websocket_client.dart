@@ -27,6 +27,12 @@ class DesktopClient {
   String? lastError;
   void Function(ConnState state)? onStateChanged;
 
+  /// Called when a connected peer (e.g. the desktop) sends its own metrics, so
+  /// this device can display the peer as a remote device (peer-to-peer display).
+  void Function(String id, String name, Map<String, dynamic> data)? onPeerMetrics;
+
+  String? _peerName;
+
   static const int _maxBackoffSeconds = 30;
   static const String _protocolVersion = '1.0';
 
@@ -96,12 +102,23 @@ class DesktopClient {
   void _onMessage(dynamic raw) {
     try {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
-      // hello_ack / pong / config are acknowledged implicitly; nothing to do for MVP.
-      if (msg['type'] == 'hello_ack') {
+      final type = msg['type'];
+      if (type == 'hello_ack') {
+        _peerName = msg['device_name'] as String?;
         final interval = (msg['interval_seconds'] as num?)?.toInt();
         if (interval != null && interval >= 1) {
           config.intervalSeconds = interval;
           _startSending(); // apply server-requested cadence
+        }
+      } else if (type == 'metrics') {
+        // A peer is sharing its own metrics -> surface it as a remote device.
+        final id = (msg['device_id'] as String?) ?? '';
+        final data = (msg['data'] as Map?)?.map(
+              (k, v) => MapEntry(k.toString(), v),
+            ) ??
+            <String, dynamic>{};
+        if (id.isNotEmpty) {
+          onPeerMetrics?.call(id, _peerName ?? id, data.cast<String, dynamic>());
         }
       }
     } catch (_) {

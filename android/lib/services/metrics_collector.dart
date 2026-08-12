@@ -98,11 +98,19 @@ class MetricsCollector {
         BatteryState.discharging => 'discharging',
         _ => 'unknown',
       };
+      double? temp;
+      try {
+        final t = await _channel.invokeMethod<double>('getBatteryTemp');
+        if (t != null && t > 0) temp = t;
+      } catch (_) {
+        temp = null;
+      }
       return BatteryMetrics(
         present: true,
         percent: level.toDouble(),
         plugged: plugged,
         status: status,
+        temperatureC: temp,
       );
     } catch (_) {
       return BatteryMetrics(present: true, percent: null, plugged: null, status: 'unknown');
